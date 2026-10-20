@@ -1,0 +1,4460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backlog Board</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .header-left { display: flex; gap: 8px; align-items: center; }
+    .header-right { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+    .sync-indicator { font-size: 11px; color: #9ca3af; }
+    .orch-pill {
+      font-size: 11px; border-radius: 6px; padding: 3px 8px;
+      display: flex; align-items: center; gap: 4px; cursor: default;
+    }
+    .orch-pill.running { background: #dcfce7; color: #166534; }
+    .orch-pill.stopped { background: #f3f4f6; color: #9ca3af; }
+    .orch-pill .orch-dot { font-size: 8px; }
+    .orch-pill .orch-age { font-size: 10px; opacity: 0.7; }
+    .badge-stuck { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; font-size: 10px; }
+    .board-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px; background: #f8f9fb; border-bottom: 1px solid #e5e7eb;
+    }
+    .user-indicator {
+      font-size: 11px; color: #6b7280;
+      background: #f3f4f6; border-radius: 6px;
+      padding: 3px 8px; display: flex; align-items: center; gap: 4px;
+    }
+    .user-indicator::before { content: '●'; color: #10b981; font-size: 8px; }
+    .search-input {
+      padding: 5px 10px 5px 28px; border: 1px solid #e5e7eb; border-radius: 8px;
+      font-size: 13px; font-family: inherit; background: #f9fafb; width: 200px;
+      transition: all 0.15s; color: #374151;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: 8px center;
+    }
+    .search-input:focus { outline: none; border-color: #3b82f6; background-color: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,0.08); width: 240px; }
+    .search-input.has-value { background-color: #fff; border-color: #93c5fd; }
+    .card.search-hidden { display: none; }
+    .assignee-dd { position: relative; }
+    .assignee-dd-trigger {
+      padding: 5px 24px 5px 10px; border: 1px solid #e5e7eb; border-radius: 8px;
+      font-size: 13px; font-family: inherit; background: #f9fafb; color: #374151;
+      cursor: pointer; white-space: nowrap; user-select: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+      transition: all 0.15s;
+    }
+    .assignee-dd-trigger:hover { background-color: #f3f4f6; border-color: #d1d5db; }
+    .assignee-dd-trigger.has-value { background-color: #fff; border-color: #93c5fd; color: #1d4ed8; }
+    .assignee-dd-menu {
+      display: none; position: absolute; top: calc(100% + 4px); right: 0;
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 50;
+      min-width: 180px; max-height: 260px; overflow-y: auto; padding: 6px;
+    }
+    .assignee-dd-menu.open { display: block; }
+    .assignee-dd-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; color: #374151; user-select: none;
+    }
+    .assignee-dd-item:hover { background: #f3f4f6; }
+    .assignee-dd-item input[type="checkbox"] { accent-color: #3b82f6; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+    .assignee-dd-item.is-all { border-bottom: 1px solid #f0f0f0; margin-bottom: 4px; padding-bottom: 8px; font-weight: 500; }
+    .assignee-dd-divider { border: none; border-top: 1px solid #f0f0f0; margin: 4px 0; }
+
+    /* Board */
+    .board {
+      display: flex;
+      gap: 16px;
+      padding: 20px;
+      overflow-x: auto;
+      min-height: calc(100vh - 56px);
+      align-items: flex-start;
+    }
+
+    /* Columns */
+    .column {
+      background: #fff;
+      border-radius: 12px;
+      min-width: 272px;
+      max-width: 300px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 96px);
+      transition: opacity 0.2s;
+    }
+    .column-header {
+      padding: 12px 14px;
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 12px 12px 0 0;
+    }
+    .column-header .count {
+      background: rgba(0,0,0,0.06);
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    /* Gate indicator on column header when dragging */
+    .column-header .gate-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      display: none;
+      margin-left: 6px;
+    }
+    .column.gate-blocked .column-header .gate-badge {
+      display: inline;
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .column.gate-allowed .column-header .gate-badge {
+      display: inline;
+      background: #d1fae5;
+      color: #047857;
+    }
+    .column.gate-blocked { opacity: 0.5; }
+    .column.gate-blocked .column-body { pointer-events: none; }
+
+    .column-body {
+      padding: 8px;
+      min-height: 80px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .column-body.drag-over { background: #f0f4ff; }
+    .column.gate-blocked .column-body.drag-over { background: #fef2f2; }
+
+    /* Cards */
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: grab;
+      transition: box-shadow 0.15s, transform 0.1s;
+      position: relative;
+    }
+    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .card.dragging { opacity: 0.4; transform: rotate(1deg); }
+    .card-title { font-weight: 600; font-size: 13px; line-height: 1.3; margin-bottom: 2px; }
+    .card-desc {
+      font-size: 12px;
+      color: #6b7280;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.4;
+    }
+    .card-meta { display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .badge-question { background: #fef3c7; color: #92400e; }
+    .badge-position { background: #f1f5f9; color: #64748b; }
+    .badge-agent { background: #ede9fe; color: #6d28d9; }
+    .card-dates { font-size: 10px; color: #9ca3af; margin-top: 4px; display: flex; justify-content: space-between; }
+
+    /* Reorder arrows */
+    .card-reorder {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      display: none;
+      flex-direction: column;
+      gap: 1px;
+      z-index: 2;
+    }
+    .card:hover .card-reorder { display: flex; }
+    .reorder-btn {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      line-height: 1;
+      padding: 1px 4px;
+      color: #9ca3af;
+      transition: all 0.1s;
+    }
+    .reorder-btn:hover { background: #f0f4ff; color: #3b82f6; border-color: #93c5fd; }
+    .reorder-btn:disabled { opacity: 0; cursor: default; }
+
+    /* Drop indicator line */
+    .drop-line {
+      height: 3px;
+      background: #3b82f6;
+      border-radius: 2px;
+      margin: -2px 0 6px 0;
+      opacity: 0;
+      transition: opacity 0.1s;
+      pointer-events: none;
+    }
+    .drop-line.active { opacity: 1; }
+
+    /* Buttons */
+    .btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-ghost { background: transparent; color: #6b7280; }
+    .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+    .btn-danger { background: #fee2e2; color: #dc2626; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* Modal (shared) */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 48px;
+      z-index: 100;
+      backdrop-filter: blur(2px);
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 16px;
+      width: 540px;
+      max-height: 82vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      animation: modalIn 0.15s ease-out;
+    }
+    @keyframes modalIn { from { transform: translateY(-8px); opacity: 0; } }
+
+    .modal-header {
+      padding: 18px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h2 { font-size: 16px; font-weight: 600; }
+    .modal-body { padding: 14px 22px; }
+    .modal-footer {
+      padding: 14px 22px;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    /* Form */
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+    }
+    .form-group textarea { resize: vertical; min-height: 72px; }
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
+    }
+
+    /* Staged Actions */
+    .staged-section { margin-top: 12px; }
+    .staged-action-item {
+      background: #fffbeb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-left: 3px solid #f59e0b;
+    }
+    .staged-action-item.approved { border-left-color: #10b981; background: #f0fdf4; }
+    .staged-action-item.rejected { border-left-color: #ef4444; background: #fef2f2; }
+    .staged-action-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .staged-action-type {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .staged-action-item.approved .staged-action-type { background: #d1fae5; color: #047857; }
+    .staged-action-item.rejected .staged-action-type { background: #fee2e2; color: #991b1b; }
+    .staged-action-desc { font-size: 13px; color: #374151; margin-bottom: 4px; }
+    .staged-action-meta { font-size: 11px; color: #9ca3af; }
+    .staged-action-btns { display: flex; gap: 4px; }
+    .staged-action-btns button {
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      cursor: pointer;
+    }
+    .staged-action-btns .approve-btn:hover { background: #d1fae5; border-color: #a7f3d0; }
+    .staged-action-btns .reject-btn:hover { background: #fee2e2; border-color: #fca5a5; }
+    .badge-staged { background: #fef3c7; color: #92400e; }
+
+    /* Threads */
+    .threads-section { margin-top: 12px; }
+    .thread-item {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-left: 3px solid #d1d5db;
+    }
+    .thread-item.unresolved { border-left-color: #f59e0b; }
+    .thread-item.resolved { border-left-color: #10b981; }
+    .thread-topic {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .thread-topic-text { font-weight: 600; font-size: 13px; color: #374151; cursor: pointer; }
+    .thread-topic-text:hover { color: #1d4ed8; }
+    .thread-actions { display: flex; gap: 4px; }
+    .thread-resolve-btn, .thread-tag-btn {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      cursor: pointer;
+      color: #6b7280;
+    }
+    .thread-resolve-btn:hover, .thread-tag-btn:hover { background: #f3f4f6; }
+    .thread-resolve-btn.is-resolved { background: #d1fae5; color: #047857; border-color: #a7f3d0; }
+    .thread-tag-btn.is-tagged { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+    .badge-tagged { background: #dbeafe; color: #1d4ed8; }
+    .thread-messages { margin-top: 4px; }
+    .thread-msg { font-size: 12px; padding: 3px 0; line-height: 1.4; }
+    .thread-msg .msg-role { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .thread-msg .msg-role.agent { color: #3b82f6; }
+    .thread-msg .msg-role.user { color: #8b5cf6; }
+    .thread-msg .msg-text { color: #374151; margin-left: 2px; }
+    .thread-reply-row { display: flex; gap: 6px; margin-top: 6px; }
+    .thread-reply-row input { flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-family: inherit; }
+    .thread-collapsed { display: none; }
+
+    .add-thread-row { display: flex; gap: 6px; margin-top: 8px; }
+    .add-thread-row input { flex: 1; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
+
+    /* Links */
+    .links-section { margin-top: 12px; }
+    .link-item {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    .link-item.reverse { border-left: 3px solid #c7d2fe; }
+    .link-type-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .link-type-discovered-during { background: #fef3c7; color: #92400e; }
+    .link-type-follow-up { background: #dbeafe; color: #1d4ed8; }
+    .link-type-blocks { background: #fee2e2; color: #dc2626; }
+    .link-type-related { background: #e0e7ff; color: #4338ca; }
+    .link-body { flex: 1; min-width: 0; }
+    .link-target { font-weight: 600; font-size: 12px; color: #374151; }
+    .link-reason { font-size: 11px; color: #6b7280; margin-top: 2px; line-height: 1.3; }
+    .link-reverse-hint { font-size: 10px; color: #9ca3af; font-weight: 400; }
+    .link-remove-btn {
+      background: none; border: none; cursor: pointer; color: #d1d5db;
+      font-size: 16px; padding: 0 2px; flex-shrink: 0; line-height: 1;
+    }
+    .link-remove-btn:hover { color: #ef4444; }
+    .add-link-row {
+      display: flex; gap: 6px; margin-top: 8px; align-items: flex-end; flex-wrap: wrap;
+    }
+    .add-link-row select, .add-link-row input {
+      padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 12px; font-family: inherit; background: #fff;
+    }
+    .add-link-row select { min-width: 130px; }
+    .add-link-row input { flex: 1; min-width: 120px; }
+    /* External refs */
+    .ext-refs-section { margin-top: 12px; }
+    .ext-ref-item {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    .ext-ref-system-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      background: #f0fdf4;
+      color: #166534;
+      text-transform: uppercase;
+    }
+    .ext-ref-id { font-weight: 600; font-size: 12px; color: #374151; flex: 1; }
+    .ext-ref-id a { color: #2563eb; text-decoration: none; }
+    .ext-ref-id a:hover { text-decoration: underline; }
+    .ext-ref-remove-btn {
+      background: none; border: none; cursor: pointer; color: #d1d5db;
+      font-size: 16px; padding: 0 2px; flex-shrink: 0; line-height: 1;
+      margin-left: auto;
+    }
+    .ext-ref-remove-btn:hover { color: #ef4444; }
+    .badge-link { background: #e0e7ff; color: #4338ca; }
+    .badge-score { font-weight: 600; }
+    .badge-score-high { background: #dcfce7; color: #166534; }
+    .badge-score-mid { background: #fef9c3; color: #854d0e; }
+    .badge-score-low { background: #f1f5f9; color: #64748b; }
+    .badge-category { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge-bug { background: #fee2e2; color: #991b1b; }
+    .badge-feature { background: #dbeafe; color: #1e40af; }
+    .badge-chore { background: #f3f4f6; color: #4b5563; }
+    .badge-tech-debt { background: #fef3c7; color: #92400e; }
+    .complexity-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+    .complexity-low { background: #22c55e; }
+    .complexity-medium { background: #eab308; }
+    .complexity-high { background: #ef4444; }
+    .card.stale-item { border-left: 3px solid #f59e0b; }
+    .sort-toggle { padding: 5px 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; font-family: inherit; background: #f9fafb; color: #374151; cursor: pointer; }
+    .sort-toggle.active { background: #eef2ff; border-color: #818cf8; color: #4338ca; }
+
+    /* Close button */
+    .close-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: #9ca3af; padding: 2px 6px; border-radius: 4px; }
+    .close-btn:hover { color: #374151; background: #f3f4f6; }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 20px 12px; color: #c0c4cc; font-size: 12px; }
+
+    /* Welcome panel — shown when backlog has zero items */
+    .welcome-panel {
+      max-width: 520px;
+      margin: 80px auto 0;
+      padding: 36px 40px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+      text-align: center;
+    }
+    .welcome-panel h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+    .welcome-panel .welcome-subtitle {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 24px;
+    }
+    .welcome-panel .welcome-commands {
+      text-align: left;
+      background: #f8f9fb;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+    }
+    .welcome-panel .welcome-cmd {
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 13px;
+      color: #1e293b;
+      padding: 5px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .welcome-panel .welcome-cmd code {
+      background: none;
+      white-space: nowrap;
+    }
+    .welcome-panel .welcome-cmd .cmd-desc {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+    .welcome-panel .welcome-footer {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .welcome-panel .welcome-footer a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+    .welcome-panel .welcome-footer a:hover { text-decoration: underline; }
+
+    /* Dismissible info banner */
+    .info-banner {
+      background: #fef9c3;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #92400e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .info-banner .banner-dismiss {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #92400e;
+      padding: 0 4px;
+      line-height: 1;
+      opacity: 0.7;
+    }
+    .info-banner .banner-dismiss:hover { opacity: 1; }
+
+    /* ── Toast notification ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1f2937;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 200;
+      opacity: 0;
+      transition: all 0.3s ease;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .toast.toast-error { background: #dc2626; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Settings Modal ── */
+    .settings-lane-list { list-style: none; padding: 0; margin: 0; }
+    .settings-lane {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      transition: background 0.1s;
+    }
+    .settings-lane:hover { background: #f3f4f6; }
+    .settings-lane.drag-over-lane { background: #dbeafe; border-color: #93c5fd; }
+    .settings-lane.locked { background: #f0fdf4; border-color: #bbf7d0; }
+    .lane-drag-handle { cursor: grab; color: #9ca3af; font-size: 16px; padding: 0 2px; user-select: none; }
+    .lane-drag-handle:active { cursor: grabbing; }
+    .lane-color-swatch {
+      width: 28px; height: 28px; border-radius: 6px; border: 2px solid #e5e7eb;
+      cursor: pointer; flex-shrink: 0; position: relative; overflow: hidden;
+    }
+    .lane-color-swatch input[type="color"] {
+      position: absolute; inset: -4px; width: 36px; height: 36px; border: none; cursor: pointer; opacity: 0;
+    }
+    .lane-label-input {
+      flex: 1; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 13px; font-family: inherit; background: #fff;
+    }
+    .lane-label-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
+    .lane-id-hint { font-size: 10px; color: #9ca3af; min-width: 80px; text-align: center; font-family: 'SF Mono', Monaco, monospace; }
+    .lane-delete-btn {
+      background: none; border: none; cursor: pointer; color: #d1d5db;
+      font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
+    }
+    .lane-delete-btn:hover { color: #ef4444; background: #fef2f2; }
+    .lane-delete-btn:disabled { opacity: 0; cursor: default; }
+    .lane-lock-icon { font-size: 12px; color: #16a34a; padding: 2px 4px; min-width: 24px; text-align: center; }
+
+    /* Requires chips in settings */
+    .lane-requires-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      padding-left: 38px;
+      flex-wrap: wrap;
+    }
+    .lane-requires-label {
+      font-size: 10px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      font-weight: 600;
+      margin-right: 2px;
+    }
+    .requires-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 8px;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .requires-chip .chip-remove {
+      cursor: pointer;
+      font-size: 12px;
+      color: #b45309;
+      margin-left: 2px;
+    }
+    .requires-chip .chip-remove:hover { color: #dc2626; }
+    .requires-add-btn {
+      font-size: 10px;
+      padding: 1px 6px;
+      border: 1px dashed #d1d5db;
+      border-radius: 4px;
+      background: none;
+      color: #9ca3af;
+      cursor: pointer;
+    }
+    .requires-add-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+
+    /* Requires dropdown */
+    .requires-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .requires-dropdown-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      z-index: 10;
+      min-width: 140px;
+      padding: 4px;
+      margin-top: 2px;
+    }
+    .requires-dropdown-item {
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #374151;
+    }
+    .requires-dropdown-item:hover { background: #f3f4f6; }
+
+    .add-lane-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+    .add-lane-row input { flex: 1; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; font-family: inherit; }
+    .settings-section-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .settings-help { font-size: 11px; color: #9ca3af; margin-top: 4px; line-height: 1.4; }
+
+    /* ── Policy Engine styles ── */
+    .policy-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .policy-item {
+      border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px;
+      background: #fff; position: relative;
+    }
+    .policy-item.inactive { opacity: 0.55; }
+    .policy-item.stale { border-color: #fbbf24; background: #fffbeb; }
+    .policy-item-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .policy-toggle {
+      width: 32px; height: 18px; background: #d1d5db; border: none; border-radius: 9px;
+      cursor: pointer; position: relative; flex-shrink: 0; transition: background 0.15s;
+    }
+    .policy-toggle.on { background: #10b981; }
+    .policy-toggle::after {
+      content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; top: 2px; left: 2px; transition: left 0.15s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .policy-toggle.on::after { left: 16px; }
+    .policy-name { font-size: 13px; font-weight: 600; color: #111827; flex: 1; }
+    .policy-priority { font-size: 10px; color: #9ca3af; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+    .policy-fire-badge {
+      font-size: 10px; color: #6b7280; background: #f3f4f6;
+      padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+    }
+    .policy-fire-badge.has-fires { color: #10b981; background: #d1fae5; }
+    .policy-description { font-size: 12px; color: #6b7280; line-height: 1.5; }
+    .policy-stale-warning { font-size: 11px; color: #d97706; margin-top: 4px; }
+    .policy-actions-row { display: flex; gap: 6px; margin-top: 8px; }
+    .policy-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid #e5e7eb; background: #f9fafb; cursor: pointer; color: #374151; }
+    .policy-btn:hover { background: #f3f4f6; }
+    .policy-btn.danger { color: #ef4444; border-color: #fecaca; background: #fff5f5; }
+    .policy-btn.danger:hover { background: #fee2e2; }
+    .policy-log-section { margin-top: 10px; }
+    .policy-log-entry {
+      font-size: 11px; color: #6b7280; padding: 6px 8px; background: #f9fafb;
+      border-radius: 6px; margin-bottom: 4px; border-left: 3px solid #e5e7eb;
+    }
+    .policy-log-entry.fired { border-left-color: #10b981; }
+    .policy-log-entry.conflict { border-left-color: #f59e0b; }
+    .policy-add-form { background: #f9fafb; border-radius: 8px; padding: 12px; border: 1px solid #e5e7eb; margin-top: 8px; }
+    .policy-add-form input, .policy-add-form textarea { width: 100%; margin-bottom: 8px; }
+    .policy-add-form textarea { height: 72px; resize: vertical; }
+    .policy-suggestions { margin-top: 10px; }
+    .suggestion-item {
+      border: 1px dashed #93c5fd; border-radius: 6px; padding: 8px 10px;
+      background: #eff6ff; margin-bottom: 6px; cursor: pointer;
+    }
+    .suggestion-item:hover { background: #dbeafe; }
+    .suggestion-name { font-size: 12px; font-weight: 600; color: #1d4ed8; margin-bottom: 2px; }
+    .suggestion-desc { font-size: 11px; color: #3b82f6; line-height: 1.4; }
+    .suggestion-add-btn { font-size: 10px; color: #2563eb; border: 1px solid #93c5fd; background: #fff; border-radius: 4px; padding: 2px 6px; float: right; cursor: pointer; }
+    .settings-project-input {
+      width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 14px; font-family: inherit; margin-bottom: 18px;
+    }
+    .settings-project-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.08); }
+    .settings-divider { border: none; border-top: 1px solid #f0f0f0; margin: 16px 0; }
+    .gear-btn {
+      background: none; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;
+      font-size: 22px; padding: 3px 8px; color: #6b7280; transition: all 0.15s; line-height: 1;
+    }
+    .gear-btn:hover { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+    .refresh-btn {
+      background: none; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;
+      font-size: 22px; padding: 3px 8px; color: #6b7280; transition: all 0.15s; line-height: 1;
+    }
+    .refresh-btn:hover { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+    .team-btn {
+      background: none; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;
+      font-size: 13px; padding: 5px 10px; color: #6b7280; transition: all 0.15s;
+      font-family: inherit; display: flex; align-items: center; gap: 5px;
+    }
+    .team-btn:hover { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+    .team-btn .team-count { background: #e0e7ff; color: #4338ca; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 10px; }
+
+    /* Teams modal */
+    .team-grid { display: flex; flex-direction: column; gap: 12px; }
+    .team-card {
+      border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px;
+      background: #fafbfc; transition: border-color 0.15s;
+    }
+    .team-card:hover { border-color: #c7d2fe; }
+    .team-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .team-card-name { font-size: 15px; font-weight: 600; color: #1a1a2e; }
+    .team-card-load {
+      font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px;
+    }
+    .team-card-load.idle { background: #f0fdf4; color: #166534; }
+    .team-card-load.active { background: #fef9c3; color: #854d0e; }
+    .team-card-load.full { background: #fee2e2; color: #991b1b; }
+    .team-card-desc { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
+    .team-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .team-skill-tag {
+      font-size: 11px; background: #e0e7ff; color: #4338ca; padding: 2px 7px; border-radius: 6px;
+    }
+    .team-complexity-tag {
+      font-size: 11px; background: #f3f4f6; color: #6b7280; padding: 2px 7px; border-radius: 6px;
+    }
+    .team-card-section { margin-top: 8px; }
+    .team-card-section-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .team-card-items { font-size: 12px; color: #374151; }
+    .team-card-items li { margin-bottom: 2px; list-style: none; padding-left: 12px; position: relative; }
+    .team-card-items li::before { content: ''; position: absolute; left: 0; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: #3b82f6; }
+    .team-learnings { font-size: 12px; color: #6b7280; }
+    .team-learnings li { margin-bottom: 2px; list-style: none; padding-left: 12px; position: relative; }
+    .team-learnings li::before { content: ''; position: absolute; left: 0; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: #d1d5db; }
+    .team-empty { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; }
+
+    /* Modal tabs */
+    .modal-tabs {
+      display: flex;
+      gap: 0;
+      padding: 12px 22px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .modal-tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #6b7280;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.15s;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      font-family: inherit;
+    }
+    .modal-tab:hover { color: #374151; }
+    .modal-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+    .modal-tab-content { display: none; }
+    .modal-tab-content.active { display: block; }
+
+    /* History timeline */
+    .history-timeline {
+      padding: 8px 0;
+    }
+    .history-empty {
+      text-align: center;
+      padding: 24px 12px;
+      color: #c0c4cc;
+      font-size: 13px;
+    }
+    .history-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 0;
+      position: relative;
+    }
+    .history-entry:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 11px;
+      top: 24px;
+      bottom: -6px;
+      width: 2px;
+      background: #e5e7eb;
+    }
+    .history-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #fff;
+      font-weight: 600;
+      position: relative;
+      z-index: 1;
+    }
+    .history-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .history-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+    }
+    .history-sublabel {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 1px;
+    }
+    .intel-score-big { font-size: 36px; font-weight: 700; text-align: center; margin: 12px 0; }
+    .intel-breakdown { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12px; padding: 12px; background: #f9fafb; border-radius: 8px; margin-bottom: 16px; }
+    .intel-breakdown dt { color: #6b7280; }
+    .intel-breakdown dd { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .intel-rec { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .intel-rec-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #15803d; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .intel-rec-value { font-size: 14px; font-weight: 500; color: #166534; }
+    .intel-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+    .intel-meta-item { background: #f9fafb; padding: 8px; border-radius: 6px; }
+    .intel-meta-label { color: #9ca3af; font-size: 10px; text-transform: uppercase; }
+    .intel-meta-value { font-weight: 600; margin-top: 2px; }
+    .history-reset {
+      background: #fef3c7;
+      border: 1px dashed #f59e0b;
+      border-radius: 6px;
+      padding: 4px 10px;
+      margin: 6px 0;
+      font-size: 11px;
+      color: #92400e;
+      font-weight: 500;
+    }
+    .history-current {
+      border: 2px solid #3b82f6;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #eff6ff;
+      margin-top: 6px;
+    }
+    .history-current .history-label { color: #1d4ed8; }
+
+    /* ── Discarded column ── */
+    .column.discarded-col { opacity: 0.7; }
+    .column.discarded-col .column-header { cursor: pointer; user-select: none; }
+    .column.discarded-col .column-header:hover { opacity: 0.85; }
+    .column.discarded-col.collapsed .column-body { display: none; }
+    .column.discarded-col .card { opacity: 0.75; }
+    .column.discarded-col .card-title { text-decoration: line-through; color: #9ca3af; }
+    .discard-toggle { font-size: 11px; color: #9ca3af; margin-left: 4px; }
+    .restore-btn {
+      display: none;
+      font-size: 10px; padding: 2px 8px; border-radius: 4px;
+      border: 1px solid #d1d5db; background: #fff; cursor: pointer;
+      color: #374151; margin-top: 4px;
+    }
+    .column.discarded-col .card:hover .restore-btn { display: inline-block; }
+
+    /* Bell / Alerts Dropdown */
+    .bell-wrap { position: relative; }
+    .bell-btn {
+      position: relative; background: none; border: 1px solid #e5e7eb; border-radius: 8px;
+      padding: 5px 8px; cursor: pointer; font-size: 15px; color: #374151;
+      display: flex; align-items: center; transition: background 0.15s;
+    }
+    .bell-btn:hover { background: #f3f4f6; }
+    .bell-badge {
+      position: absolute; top: -5px; right: -5px;
+      background: #ef4444; color: #fff; font-size: 9px; font-weight: 700;
+      border-radius: 999px; min-width: 16px; height: 16px; padding: 0 3px;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid #fff; line-height: 1;
+    }
+    .alerts-dd-menu {
+      display: none; position: absolute; top: calc(100% + 8px); right: 0;
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12); z-index: 100; width: 360px; overflow: hidden;
+    }
+    .alerts-dd-menu.open { display: block; }
+    .alerts-dd-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px 10px; border-bottom: 1px solid #f3f4f6;
+    }
+    .alerts-dd-title { font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.4px; }
+    .alerts-dismiss-all { font-size: 11px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline; }
+    .alerts-dismiss-all:hover { color: #374151; }
+    .alerts-dd-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
+    .alerts-dd-empty { padding: 24px 14px; text-align: center; font-size: 13px; color: #9ca3af; }
+    .alert-item {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 12px; color: #374151; background: #f9fafb;
+      border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; border-left-width: 3px;
+    }
+    .alert-item.type-tagged { border-left-color: #8b5cf6; }
+    .alert-item.type-moved-back { border-left-color: #3b82f6; }
+    .alert-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .alert-msg { flex: 1; line-height: 1.5; }
+    .alert-msg a { color: #1d4ed8; cursor: pointer; font-weight: 500; text-decoration: none; }
+    .alert-msg a:hover { text-decoration: underline; }
+    .alert-dismiss { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 15px; padding: 0; flex-shrink: 0; line-height: 1; }
+    .alert-dismiss:hover { color: #374151; }
+
+    /* ── Phase 3: Multi-Agent Coordination ── */
+    .view-toggle-group { display: flex; gap: 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    .view-toggle-btn {
+      padding: 5px 12px; font-size: 12px; font-family: inherit; background: #f9fafb;
+      border: none; cursor: pointer; color: #6b7280; font-weight: 500; transition: all 0.12s;
+    }
+    .view-toggle-btn:hover { background: #f3f4f6; }
+    .view-toggle-btn.active { background: #3b82f6; color: #fff; }
+    .view-toggle-btn:first-child { border-right: 1px solid #e5e7eb; }
+
+    .conflict-badge-btn {
+      display: none; align-items: center; gap: 5px; padding: 4px 10px;
+      background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px;
+      font-size: 12px; color: #92400e; font-weight: 500; cursor: pointer;
+      font-family: inherit; transition: all 0.12s;
+    }
+    .conflict-badge-btn:hover { background: #fde68a; }
+    .conflict-badge-btn.has-conflicts { display: flex; }
+
+    .card.has-conflict { border-left: 3px solid #f59e0b; }
+    .badge-conflict { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; font-size: 10px; }
+    .badge-2nd-review { background: #eef2ff; color: #4338ca; border: 1px solid #a5b4fc; font-size: 10px; font-weight: 600; }
+
+    /* Graph view */
+    .graph-view {
+      display: none; padding: 20px; gap: 20px;
+      min-height: calc(100vh - 96px);
+    }
+    .graph-view.active { display: flex; }
+    .graph-sidebar {
+      width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px;
+    }
+    .graph-panel {
+      background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+    .graph-panel-header {
+      padding: 10px 14px; border-bottom: 1px solid #f3f4f6;
+      font-size: 12px; font-weight: 600; color: #374151;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .graph-panel-body { padding: 12px 14px; }
+    .agent-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid #f9fafb; font-size: 12px;
+    }
+    .agent-row:last-child { border-bottom: none; }
+    .agent-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .agent-dot.idle { background: #d1d5db; }
+    .agent-dot.active { background: #22c55e; }
+    .agent-dot.overloaded { background: #ef4444; }
+    .agent-name { font-weight: 500; color: #374151; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-load-bar-wrap { width: 60px; height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; }
+    .agent-load-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .agent-load-label { font-size: 10px; color: #9ca3af; min-width: 28px; text-align: right; }
+    .conflict-item {
+      padding: 7px 10px; background: #fef3c7; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 11px; color: #78350f; line-height: 1.5;
+      margin-bottom: 6px;
+    }
+    .conflict-item:last-child { margin-bottom: 0; }
+    .conflict-item strong { font-weight: 600; }
+    .rebalance-item {
+      padding: 7px 10px; background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 6px; font-size: 11px; color: #1e40af; line-height: 1.5;
+      margin-bottom: 6px;
+    }
+    .rebalance-item:last-child { margin-bottom: 0; }
+    .graph-content {
+      flex: 1; min-width: 0; background: #fff; border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .graph-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px 8px; flex-shrink: 0; border-bottom: 1px solid #f3f4f6;
+    }
+    .graph-viewport {
+      flex: 1; min-height: 300px; overflow: hidden; cursor: grab; position: relative;
+    }
+    .graph-viewport.dragging { cursor: grabbing; }
+    .graph-canvas {
+      transform-origin: 0 0; will-change: transform; user-select: none;
+      padding: 20px; display: inline-block;
+    }
+    .graph-zoom-controls { display: flex; gap: 4px; flex-shrink: 0; }
+    .graph-zoom-btn {
+      width: 28px; height: 28px; border-radius: 6px; border: 1px solid #e5e7eb;
+      background: #fff; cursor: pointer; font-size: 16px; font-weight: 500;
+      color: #374151; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06); line-height: 1;
+    }
+    .graph-zoom-btn:hover { background: #f3f4f6; }
+    .graph-zoom-btn.fit-btn { width: auto; padding: 0 8px; font-size: 11px; }
+    .graph-empty {
+      color: #9ca3af; text-align: center; padding: 48px 24px; font-size: 13px;
+    }
+    .graph-legend {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      font-size: 11px; color: #6b7280;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .legend-section-label { font-size: 10px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; }
+    .startable-item {
+      padding: 6px 10px; background: #f0fdf4; border: 1px solid #bbf7d0;
+      border-radius: 6px; font-size: 11px; color: #166534; margin-bottom: 5px;
+    }
+    .startable-item:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="project-title">Flow Board</h1>
+    <div class="header-left">
+      <button class="refresh-btn" onclick="refreshBoard()" title="Refresh">&#x21bb;</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Add Item</button>
+    </div>
+    <div class="header-right">
+      <span class="orch-pill stopped" id="orch-pill" title="Orchestrator status"></span>
+      <span class="user-indicator" id="user-display" title="Git user identity"></span>
+      <span class="sync-indicator" id="sync-status">Synced</span>
+      <button class="team-btn" onclick="openTeams()" title="View Team">&#x1F465; Team <span class="team-count" id="team-count">0</span></button>
+      <button class="gear-btn" onclick="openSettings()" title="Board Settings">&#9881;</button>
+      <div class="bell-wrap" id="bell-wrap">
+        <button class="bell-btn" id="bell-btn" onclick="toggleAlertsDd()" title="Alerts">
+          &#x1F514;
+          <span class="bell-badge" id="bell-badge" style="display:none">0</span>
+        </button>
+        <div class="alerts-dd-menu" id="alerts-dd-menu">
+          <div class="alerts-dd-header">
+            <span class="alerts-dd-title" id="alerts-title">Alerts</span>
+            <button class="alerts-dismiss-all" onclick="dismissAllAlerts()">Dismiss all</button>
+          </div>
+          <div class="alerts-dd-body" id="alerts-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board-toolbar">
+    <input type="text" class="search-input" id="search-input"
+           placeholder="Search by # or title…"
+           oninput="onSearch(this.value)"
+           title="Search by position (#3) or title. Press / to focus.">
+    <button class="sort-toggle" id="sort-toggle" onclick="toggleSortMode()" title="Toggle score-based sorting">Sort: Position</button>
+    <div class="assignee-dd" id="assignee-dd">
+      <div class="assignee-dd-trigger" id="assignee-dd-trigger" onclick="toggleAssigneeDd()" title="Filter by assignee">Assignee</div>
+      <div class="assignee-dd-menu" id="assignee-dd-menu"></div>
+    </div>
+    <div class="view-toggle-group" style="margin-left:auto;">
+      <button class="view-toggle-btn active" id="view-btn-kanban" onclick="setViewMode('kanban')" title="Kanban Board">Board</button>
+      <button class="view-toggle-btn" id="view-btn-graph" onclick="setViewMode('graph')" title="Dependency Graph">Graph</button>
+    </div>
+    <button class="conflict-badge-btn" id="conflict-badge-btn" onclick="setViewMode('graph')" title="View conflicts in Graph view">
+      ⚡ <span id="conflict-count-badge">0</span> conflict<span id="conflict-plural"></span>
+    </button>
+  </div>
+
+  <div class="board" id="board"></div>
+  <div class="graph-view" id="graph-view">
+    <div class="graph-sidebar" id="graph-sidebar"></div>
+    <div class="graph-content" id="graph-content">
+      <div class="graph-empty">Loading graph…</div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Item Modal -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2 id="modal-title">New Item</h2><span id="modal-item-number" style="font-size:0.85em;font-weight:600;color:#6b7280;margin-left:8px;"></span>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-tabs" id="modal-tabs" style="display:none;">
+        <button class="modal-tab active" data-tab="details" onclick="switchModalTab('details')">Details</button>
+        <button class="modal-tab" data-tab="intelligence" onclick="switchModalTab('intelligence')">Intelligence</button>
+        <button class="modal-tab" data-tab="history" onclick="switchModalTab('history')">History</button>
+      </div>
+      <div class="modal-tab-content active" id="tab-details">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Title</label>
+            <input type="text" id="item-title" placeholder="What needs to be done?">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="item-desc" rows="3" placeholder="Details, acceptance criteria, context..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="item-status"></select>
+          </div>
+          <div class="form-group">
+            <label>Assigned To</label>
+            <input type="text" id="item-assigned" placeholder="Agent or person name (e.g., worker-1)">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Complexity</label>
+              <select id="item-complexity">
+                <option value="">Not set</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select id="item-category">
+                <option value="">Not set</option>
+                <option value="bug">Bug</option>
+                <option value="feature">Feature</option>
+                <option value="chore">Chore</option>
+                <option value="tech-debt">Tech Debt</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Refinement Gate</label>
+            <select id="item-refinement-gate" onchange="updateRefinementGateNote()">
+              <option value="">Not set</option>
+              <option value="simple">Simple</option>
+              <option value="complex">Complex</option>
+            </select>
+            <div id="refinement-gate-note" style="display:none;margin-top:6px;font-size:12px;color:#6366f1;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:6px 10px;">
+              Complex items will be reviewed by a secondary agent before moving to ready, to ensure no details are missed.
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Priority Weight <span style="color:#9ca3af;font-weight:400;">(1-10)</span></label>
+              <input type="number" id="item-priority-weight" min="1" max="10" placeholder="Auto (position-based)">
+            </div>
+            <div class="form-group">
+              <label>Tags <span style="color:#9ca3af;font-weight:400;">(comma-separated)</span></label>
+              <input type="text" id="item-tags" placeholder="e.g. auth, backend">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="item-notes" rows="2" placeholder="Additional notes..."></textarea>
+          </div>
+          <div class="staged-section" id="staged-section" style="display:none;">
+            <label style="font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.3px;">Staged Actions</label>
+            <div id="staged-actions-list"></div>
+          </div>
+          <div class="threads-section" id="threads-section">
+            <label style="font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.3px;">Threads</label>
+            <div id="threads-list"></div>
+            <div class="add-thread-row">
+              <input type="text" id="new-thread-topic" placeholder="Start a new thread...">
+              <button class="btn btn-ghost btn-sm" onclick="addThread()">Start</button>
+            </div>
+          </div>
+          <div class="links-section" id="links-section">
+            <label style="font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.3px;">Links</label>
+            <div id="links-list"></div>
+            <div class="add-link-row">
+              <select id="new-link-type">
+                <option value="" disabled selected>Type...</option>
+                <option value="discovered-during">discovered-during</option>
+                <option value="follow-up">follow-up</option>
+                <option value="blocks">blocks</option>
+                <option value="related">related</option>
+              </select>
+              <select id="new-link-target"></select>
+              <input type="text" id="new-link-reason" placeholder="Reason...">
+              <button class="btn btn-ghost btn-sm" onclick="addLink()">Add</button>
+            </div>
+          </div>
+          <div class="ext-refs-section" id="ext-refs-section">
+            <label style="font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:0.3px;">External Refs</label>
+            <div id="ext-refs-list"></div>
+            <div class="add-link-row">
+              <input type="text" id="new-ref-system" placeholder="jira" style="min-width:80px;max-width:90px;flex:0 0 auto;">
+              <input type="text" id="new-ref-id" placeholder="PROJ-123" style="min-width:100px;flex:1;">
+              <input type="text" id="new-ref-url" placeholder="https://..." style="min-width:120px;flex:2;">
+              <button class="btn btn-ghost btn-sm" onclick="addRef()">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-tab-content" id="tab-history">
+        <div class="modal-body">
+          <div id="history-content"></div>
+        </div>
+      </div>
+      <div class="modal-tab-content" id="tab-intelligence">
+        <div class="modal-body">
+          <div id="intel-content"><div style="color:#9ca3af;text-align:center;padding:24px;">Loading scores...</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveItem()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-overlay" onclick="closeSettings(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="width: 520px;">
+      <div class="modal-header">
+        <h2>Board Settings</h2>
+        <button class="close-btn" onclick="closeSettings()">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab stab active" data-stab="board" onclick="switchSettingsTab('board')">Board</button>
+        <button class="modal-tab stab" data-stab="agents" onclick="switchSettingsTab('agents')">Agent Profiles</button>
+        <button class="modal-tab stab" data-stab="scoring" onclick="switchSettingsTab('scoring')">Scoring Weights</button>
+        <button class="modal-tab stab" data-stab="policies" onclick="switchSettingsTab('policies')">Policies</button>
+      </div>
+
+      <div class="modal-tab-content active" id="stab-board">
+        <div class="modal-body">
+          <div class="settings-section-label">Project Name</div>
+          <input type="text" class="settings-project-input" id="settings-project-name" placeholder="My Project">
+          <hr class="settings-divider">
+          <div class="settings-section-label">Workflow Lanes</div>
+          <p class="settings-help" style="margin-bottom:12px;">
+            Drag to reorder. First lane is always Backlog (entry point). Last lane is your done state.
+            Use <strong>Requires</strong> to add gate rules — items must pass through required lanes before entering.
+          </p>
+          <ul class="settings-lane-list" id="settings-lane-list"></ul>
+          <div class="add-lane-row">
+            <input type="text" id="new-lane-name" placeholder="New lane name (e.g., Code Review)..."
+                   onkeydown="if(event.key==='Enter'){addLane();event.preventDefault();}">
+            <button class="btn btn-primary btn-sm" onclick="addLane()">+ Add Lane</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="stab-agents">
+        <div class="modal-body">
+          <div class="settings-section-label">Agent Profiles</div>
+          <p class="settings-help" style="margin-bottom:12px;">
+            Define agent capabilities for intelligent work assignment. Skills are matched against item tags.
+          </p>
+          <div id="settings-agents-list"></div>
+          <div class="add-lane-row">
+            <input type="text" id="new-agent-name" placeholder="Agent name (e.g., worker-1)..."
+                   onkeydown="if(event.key==='Enter'){addAgentProfile();event.preventDefault();}">
+            <button class="btn btn-primary btn-sm" onclick="addAgentProfile()">+ Add Agent</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="stab-scoring">
+        <div class="modal-body">
+          <div class="settings-section-label">Scoring Weights</div>
+          <p class="settings-help" style="margin-bottom:12px;">
+            Adjust how the intelligence engine scores and ranks work items.
+          </p>
+          <div id="settings-scoring-weights" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="stab-policies">
+        <div class="modal-body">
+          <div class="settings-section-label">Natural Language Policies</div>
+          <p class="settings-help" style="margin-bottom:12px;">
+            Policies watch your backlog after every change and automatically fix priority issues, like escalating a critical bug that's been sitting unassigned, or forcing a decision on items that keep getting skipped. Add an <code>ANTHROPIC_API_KEY</code> to let AI evaluate these rules for you.
+          </p>
+          <div class="policy-list" id="settings-policy-list"></div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <button class="btn btn-primary btn-sm" onclick="showPolicyAddForm()">+ Add Policy</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadPolicySuggestions()">✦ Suggest Rules</button>
+            <button class="btn btn-ghost btn-sm" onclick="openPolicyLog()">History</button>
+          </div>
+          <div id="policy-add-form" style="display:none;" class="policy-add-form">
+            <div class="settings-section-label" style="margin-bottom:6px;">New Policy</div>
+            <input type="text" id="new-policy-name" class="settings-project-input" placeholder="Short name (e.g. Jump critical bugs)">
+            <textarea id="new-policy-desc" class="settings-project-input" style="height:72px;resize:vertical;"
+              placeholder="Natural language rule (e.g. If a bug is blocking more than 2 active items and was filed in the last 6 hours, jump it to the top.)"></textarea>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <label style="font-size:12px;color:#374151;">Priority:</label>
+              <input type="number" id="new-policy-priority" value="5" min="1" max="10"
+                     style="width:60px;" class="settings-project-input">
+              <span style="font-size:11px;color:#9ca3af;">1 = lowest, 10 = highest</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-primary btn-sm" onclick="createPolicy()">Add Policy</button>
+              <button class="btn btn-ghost btn-sm" onclick="hidePolicyAddForm()">Cancel</button>
+            </div>
+          </div>
+          <div class="policy-suggestions" id="policy-suggestions" style="display:none;">
+            <div class="settings-section-label" style="margin-bottom:6px;">Suggested Policies</div>
+            <div id="policy-suggestions-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-ghost" onclick="closeSettings()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Policy Log Modal -->
+  <div class="modal-overlay" id="policy-log-overlay" onclick="closePolicyLog(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="width:560px;max-height:80vh;overflow-y:auto;">
+      <div class="modal-header">
+        <h2>Policy Fire History</h2>
+        <button class="close-btn" onclick="closePolicyLog()">&times;</button>
+      </div>
+      <div class="modal-body" id="policy-log-body">
+        <p style="color:#9ca3af;font-size:13px;">Loading…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Teams Modal -->
+  <div class="modal-overlay" id="teams-overlay" onclick="closeTeams(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="width: 520px;">
+      <div class="modal-header">
+        <h2>Team</h2>
+        <button class="close-btn" onclick="closeTeams()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="teams-content">
+          <p style="color:#9ca3af;font-size:13px;">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Defaults ──
+    const DEFAULT_STATUSES = [
+      { id: 'backlog',     label: 'Backlog',      color: '#94a3b8' },
+      { id: 'refined',     label: 'Refined',      color: '#f59e0b' },
+      { id: 'ready',       label: 'Ready',        color: '#10b981' },
+      { id: 'in-progress', label: 'In Progress',  color: '#3b82f6' },
+      { id: 'code-review', label: 'Code Review',  color: '#ec4899' },
+      { id: 'done',        label: 'Done',         color: '#8b5cf6' },
+      { id: 'discarded',   label: 'Discarded',    color: '#cbd5e1' }
+    ];
+
+    const COLOR_PALETTE = [
+      '#94a3b8', '#f59e0b', '#10b981', '#3b82f6', '#ec4899',
+      '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#ef4444',
+      '#84cc16', '#a855f7', '#f43f5e', '#0ea5e9', '#eab308'
+    ];
+
+    // ── State ──
+    let backlog = { version: 0, config: { scope: 'project', project_name: '' }, items: [] };
+    let statuses = DEFAULT_STATUSES;
+    let editingItemId = null;
+    let pendingLinks = [];
+    let pendingRefs = [];
+    let draggedCard = null;
+    let draggedItemId = null;
+    let currentUser = { name: 'board', email: '' };
+    let searchQuery = '';
+    let selectedAssignees = new Set(); // empty = All
+    let assigneeDdOpen = false;
+    let scoreData = {};  // {item_id: {score, score_breakdown, recommended_agent, recommended_model}}
+    let recommendData = null;  // Tribunal recommendation result
+    let graphData = null;   // Phase 3: dependency graph + conflicts + rebalancing
+    let orchStatus = null;  // orchestrator heartbeat status
+    let stuckItemIds = {};  // {item_id: stuck_minutes}
+    let sortByScore = false;
+    let viewMode = 'kanban'; // 'kanban' | 'graph'
+
+    // Settings working copy
+    let settingsLanes = [];
+    let draggedLaneIdx = null;
+    let openRequiresDropdown = null; // index of lane with open dropdown
+
+    // ── Status helpers ──
+    function getStatuses() {
+      const cfg = backlog.config && backlog.config.statuses;
+      if (Array.isArray(cfg) && cfg.length >= 2) {
+        return cfg.map((s, i) => ({
+          id: s.id,
+          label: s.label || s.id,
+          color: s.color || COLOR_PALETTE[i % COLOR_PALETTE.length],
+          requires: Array.isArray(s.requires) ? s.requires : []
+        }));
+      }
+      return DEFAULT_STATUSES.map(s => ({ ...s, requires: [] }));
+    }
+
+    function darkenColor(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const f = 0.6;
+      return `rgb(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)})`;
+    }
+
+    function firstStatusId() { return statuses[0].id; }
+
+    function labelToId(label) {
+      return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+
+    function getStatusIndex(id) {
+      return statuses.findIndex(s => s.id === id);
+    }
+
+    function getStatusLabel(id) {
+      const s = statuses.find(s => s.id === id);
+      return s ? s.label : id;
+    }
+
+    function populateStatusDropdown() {
+      const sel = document.getElementById('item-status');
+      sel.innerHTML = statuses.map(s =>
+        `<option value="${s.id}">${esc(s.label)}</option>`
+      ).join('');
+    }
+
+    // ── Gate Rule Engine ──
+    function checkGate(item, targetStatusId) {
+      // Returns { allowed: bool, missing: string[] (labels of missing lanes) }
+
+      // Discarding is always allowed from any lane — bypass gate rules
+      if (targetStatusId === 'discarded') return { allowed: true, missing: [] };
+
+      const currentIdx = getStatusIndex(item.status || 'backlog');
+      const targetIdx = getStatusIndex(targetStatusId);
+
+      // Moving backward is always allowed
+      if (targetIdx <= currentIdx) return { allowed: true, missing: [] };
+
+      const targetStatus = statuses.find(s => s.id === targetStatusId);
+      if (!targetStatus || !targetStatus.requires || targetStatus.requires.length === 0) {
+        return { allowed: true, missing: [] };
+      }
+
+      const fullHistory = item.lane_history || [];
+      const gateFrom = item.gate_from || 0;
+      // Only consider history from the current journey (gate_from onward)
+      // Handle both old format (string) and new format (object with .lane)
+      const history = new Set(fullHistory.slice(gateFrom).map(e => typeof e === 'string' ? e : e.lane));
+      history.add(item.status || 'backlog'); // Current lane counts
+
+      const missing = targetStatus.requires.filter(r => !history.has(r));
+      return {
+        allowed: missing.length === 0,
+        missing: missing.map(id => getStatusLabel(id))
+      };
+    }
+
+    // Set gate_from watermark when moving backward.
+    // Full history is preserved (audit trail), but the rule engine only checks from gate_from onward.
+    function setGateWatermark(item) {
+      if (!item.lane_history) item.lane_history = [];
+      item.gate_from = item.lane_history.length;
+    }
+
+    // ── Toast ──
+    let toastTimeout = null;
+    function showToast(message, isError) {
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.className = 'toast' + (isError ? ' toast-error' : '');
+      // Force reflow
+      void el.offsetHeight;
+      el.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => el.classList.remove('show'), 3500);
+    }
+
+    // ── API ──
+    async function loadScores() {
+      try {
+        const res = await fetch('/api/scores');
+        if (!res.ok) return;
+        const data = await res.json();
+        scoreData = {};
+        (data.items || []).forEach(s => { scoreData[s.id] = s; });
+      } catch(e) { /* scores are optional */ }
+      try {
+        const res = await fetch('/api/recommend');
+        if (res.ok) { recommendData = await res.json(); }
+      } catch(e) { /* recommend is optional */ }
+    }
+
+    async function loadGraphData() {
+      try {
+        const res = await fetch('/api/graph');
+        if (res.ok) {
+          graphData = await res.json();
+          updateConflictBadge();
+          if (viewMode === 'graph') renderGraphView();
+        }
+      } catch(e) { /* graph is optional */ }
+    }
+
+    async function loadOrchStatus() {
+      try {
+        const res = await fetch('/api/orchestrator/status');
+        if (!res.ok) return;
+        orchStatus = await res.json();
+        stuckItemIds = {};
+        (orchStatus.stuck_items || []).forEach(s => { stuckItemIds[s.id] = s.stuck_minutes; });
+        updateOrchPill();
+      } catch(e) { /* orchestrator status is optional */ }
+    }
+
+    function updateOrchPill() {
+      const pill = document.getElementById('orch-pill');
+      if (!orchStatus) {
+        pill.className = 'orch-pill stopped';
+        pill.innerHTML = '&#9675; Orchestrator stopped';
+        pill.title = 'No heartbeat file found';
+        return;
+      }
+      if (orchStatus.running) {
+        const age = orchStatus.last_tick_age_seconds;
+        const ageLabel = age != null ? (age < 60 ? age + 's ago' : Math.round(age / 60) + 'm ago') : '';
+        pill.className = 'orch-pill running';
+        pill.innerHTML = '<span class="orch-dot">&#9679;</span> Orchestrator running'
+          + (ageLabel ? ' <span class="orch-age">(' + ageLabel + ')</span>' : '');
+        pill.title = 'Mode: ' + (orchStatus.mode || 'unknown')
+          + ', in-flight: ' + (orchStatus.items_in_flight || []).length;
+      } else {
+        const age = orchStatus.last_tick_age_seconds;
+        const ageLabel = age != null ? (age < 60 ? age + 's ago' : Math.round(age / 60) + 'm ago') : '';
+        pill.className = 'orch-pill stopped';
+        pill.innerHTML = '&#9675; Orchestrator stopped'
+          + (ageLabel ? ' <span class="orch-age">(last: ' + ageLabel + ')</span>' : '');
+        pill.title = 'Last tick too old or heartbeat missing';
+      }
+    }
+
+    async function loadBacklog() {
+      try {
+        const res = await fetch('/api/backlog');
+        backlog = await res.json();
+        statuses = getStatuses();
+        populateStatusDropdown();
+        const name = backlog.config.project_name;
+        document.getElementById('project-title').textContent =
+          name ? `${name} — Flow Board` : 'Flow Board';
+        await loadScores();
+        await loadGraphData();
+        await loadOrchStatus();
+        renderBoard();
+        populateAssigneeDropdown();
+        setSyncStatus('Synced');
+        applyFilters();
+        renderAlerts();
+      } catch (e) {
+        console.error('Load failed:', e);
+        setSyncStatus('Offline');
+      }
+    }
+
+    let isSaving = false;
+    let pendingSave = false;
+    async function saveBacklog() {
+      // If a save is already in-flight, mark pending and return — the in-flight
+      // save will re-fire with the latest state when it finishes, so no move is lost.
+      if (isSaving) {
+        pendingSave = true;
+        return;
+      }
+      isSaving = true;
+      pendingSave = false;
+      try {
+        setSyncStatus('Saving...');
+        const res = await fetch('/api/backlog', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backlog, null, 2)
+        });
+        if (res.status === 409) {
+          setSyncStatus('Conflict — reloading...');
+          await loadBacklog();
+          return;
+        }
+        if (res.status === 422) {
+          const err = await res.json();
+          showToast(err.error || 'Gate rule violation', true);
+          await loadBacklog();
+          return;
+        }
+        const result = await res.json();
+        if (result.version) backlog.version = result.version;
+        // Sync authoritative lane_history / gate_from back into memory so
+        // subsequent gate checks use correct data without waiting for auto-refresh.
+        if (result.updated_items && Array.isArray(result.updated_items)) {
+          result.updated_items.forEach(updated => {
+            const idx = backlog.items.findIndex(i => i.id === updated.id);
+            if (idx >= 0) backlog.items[idx] = updated;
+          });
+        }
+        setSyncStatus('Synced');
+      } catch (e) {
+        console.error('Save failed:', e);
+        setSyncStatus('Save failed');
+      } finally {
+        isSaving = false;
+        // Fire a follow-up save with the latest state if another move came in
+        // while we were in-flight.
+        if (pendingSave) {
+          pendingSave = false;
+          saveBacklog();
+        }
+      }
+    }
+
+    function setSyncStatus(text) {
+      document.getElementById('sync-status').textContent = text;
+    }
+
+    // ── Board Rendering ──
+    // Track collapsed state for discarded column across re-renders
+    let discardedCollapsed = true;
+
+    function renderBoard() {
+      const board = document.getElementById('board');
+
+      // Save scroll positions before wiping
+      const savedWindowScrollY = window.scrollY;
+      const savedColumnScrolls = {};
+      document.querySelectorAll('.column-body[data-status]').forEach(col => {
+        savedColumnScrolls[col.dataset.status] = col.scrollTop;
+      });
+
+      board.innerHTML = '';
+
+      // Show welcome panel when backlog has no items
+      if (!backlog.items || backlog.items.length === 0) {
+        board.innerHTML = `
+          <div class="welcome-panel">
+            <h2>Welcome to Flow</h2>
+            <p class="welcome-subtitle">A backlog manager with built-in work intelligence. Get started from your terminal.</p>
+            <div class="welcome-commands">
+              <div class="welcome-cmd"><code>backlog add "Your first task"</code><span class="cmd-desc">add an item</span></div>
+              <div class="welcome-cmd"><code>backlog board</code><span class="cmd-desc">open this board</span></div>
+              <div class="welcome-cmd"><code>backlog orchestrate</code><span class="cmd-desc">auto-assign work</span></div>
+            </div>
+            <p class="welcome-footer">See the <a href="https://github.com/prajyotbankade/Flow#readme" target="_blank" rel="noopener">README</a> for full setup and configuration.</p>
+          </div>`;
+        return;
+      }
+
+      statuses.forEach(statusDef => {
+        const statusId = statusDef.id;
+        const items = backlog.items.filter(i => i.status === statusId);
+          if (sortByScore) {
+            items.sort((a, b) => ((scoreData[b.id] || {}).score || 0) - ((scoreData[a.id] || {}).score || 0));
+          }
+        const isDiscarded = statusId === 'discarded';
+        const isCollapsed = isDiscarded && discardedCollapsed;
+        const col = document.createElement('div');
+        col.className = 'column' + (isDiscarded ? ' discarded-col' : '') + (isCollapsed ? ' collapsed' : '');
+        col.dataset.status = statusId;
+
+        const color = statusDef.color;
+        const textColor = darkenColor(color);
+
+        const hasGates = statusDef.requires && statusDef.requires.length > 0;
+        const gateHint = hasGates ? statusDef.requires.map(r => getStatusLabel(r)).join(', ') : '';
+
+        const toggleHint = isDiscarded
+          ? `<span class="discard-toggle">${isCollapsed ? '▶' : '▼'}</span>`
+          : '';
+
+        col.innerHTML = `
+          <div class="column-header" style="border-color: ${color}; color: ${textColor};"
+               ${isDiscarded ? 'onclick="toggleDiscardedColumn()"' : ''}>
+            <span>
+              ${esc(statusDef.label)} ${toggleHint}
+              ${hasGates ? `<span class="gate-badge" title="Requires: ${esc(gateHint)}"></span>` : ''}
+            </span>
+            <span class="count">${items.length}</span>
+          </div>
+          <div class="column-body" data-status="${statusId}"></div>
+        `;
+
+        const body = col.querySelector('.column-body');
+
+        body.addEventListener('dragover', e => {
+          e.preventDefault();
+          if (col.classList.contains('gate-blocked')) {
+            e.dataTransfer.dropEffect = 'none';
+          } else {
+            e.dataTransfer.dropEffect = 'move';
+            body.classList.add('drag-over');
+          }
+        });
+        body.addEventListener('dragleave', e => {
+          if (!body.contains(e.relatedTarget)) body.classList.remove('drag-over');
+        });
+        body.addEventListener('drop', e => {
+          e.preventDefault();
+          body.classList.remove('drag-over');
+          if (col.classList.contains('gate-blocked')) return;
+          handleDrop(statusId, null);
+        });
+
+        if (items.length === 0) {
+          body.innerHTML = '<div class="empty-state">No items</div>';
+        } else {
+          items.forEach((item, idx) => {
+            // Drop indicator line before each card
+            const line = document.createElement('div');
+            line.className = 'drop-line';
+            line.dataset.beforeId = item.id;
+            body.appendChild(line);
+            body.appendChild(createCard(item, idx, items.length));
+          });
+          // One more drop line at the end
+          const endLine = document.createElement('div');
+          endLine.className = 'drop-line';
+          endLine.dataset.beforeId = '__end__';
+          body.appendChild(endLine);
+        }
+
+        board.appendChild(col);
+      });
+
+      // Restore scroll positions after DOM settles
+      setTimeout(() => {
+        window.scrollTo(0, savedWindowScrollY);
+        document.querySelectorAll('.column-body[data-status]').forEach(col => {
+          const saved = savedColumnScrolls[col.dataset.status];
+          if (saved != null) col.scrollTop = saved;
+        });
+      }, 0);
+    }
+
+    function createCard(item, positionInColumn, totalInColumn) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.id = item.id;
+      card.draggable = true;
+
+      const isDiscarded = item.status === 'discarded';
+      const openQ = (item.threads || []).filter(t => !t.resolved).length;
+      const taggedAgent = (item.threads || []).filter(t => t.waiting_on === 'agent').length;
+      const globalIdx = backlog.items.indexOf(item);
+      const isFirst = positionInColumn === 0;
+      const isLast = positionInColumn === totalInColumn - 1;
+
+      let meta = `<span class="badge badge-position">#${globalIdx + 1}</span>`;
+      if (item.assigned_to) {
+        meta += `<span class="badge badge-agent">${esc(item.assigned_to)}</span>`;
+      }
+      if (taggedAgent > 0) {
+        meta += `<span class="badge badge-tagged">@${taggedAgent}</span>`;
+      }
+      if (openQ > 0) {
+        meta += `<span class="badge badge-question">\u26a0 ${openQ}Q</span>`;
+      }
+      const pendingStaged = (item.staged_actions || []).filter(a => a.status === 'pending').length;
+      if (pendingStaged > 0) {
+        meta += `<span class="badge badge-staged">\u23f3 ${pendingStaged} staged</span>`;
+      }
+      const forwardLinkCount = (item.links || []).length;
+      const reverseLinkCount = getReverseLinkCount(item.id);
+      const totalLinkCount = forwardLinkCount + reverseLinkCount;
+      if (totalLinkCount > 0) {
+        meta += `<span class="badge badge-link">\uD83D\uDD17 ${totalLinkCount}</span>`;
+      }
+      // Intelligence badges
+      if (item.category) {
+        const catClass = {'bug':'badge-bug','feature':'badge-feature','chore':'badge-chore','tech-debt':'badge-tech-debt'}[item.category] || '';
+        meta += `<span class="badge badge-category ${catClass}">${item.category}</span>`;
+      }
+      if (item.complexity) {
+        meta += `<span class="complexity-dot complexity-${item.complexity}" title="Complexity: ${item.complexity}"></span>`;
+      }
+      const sd = scoreData[item.id];
+      if (sd) {
+        const sc = sd.score;
+        const cls = sc > 7 ? 'badge-score-high' : sc > 4 ? 'badge-score-mid' : 'badge-score-low';
+        meta += `<span class="badge badge-score ${cls}" title="Intelligence Score">${sc}</span>`;
+      }
+      // Conflict indicator (Phase 3)
+      const conflictInfo = graphData && (graphData.conflicts || []).find(c => c.items.includes(item.id));
+      if (conflictInfo) {
+        card.classList.add('has-conflict');
+        meta += `<span class="badge badge-conflict" title="${esc(conflictInfo.description)}">⚡ conflict</span>`;
+      }
+      // Refinement gate badge
+      if (item.refinement_gate === 'complex') {
+        meta += `<span class="badge badge-2nd-review" title="Complex item: secondary agent review before ready">2nd review</span>`;
+      }
+      // Stuck indicator (orchestrator observability)
+      const stuckMin = stuckItemIds[item.id];
+      if (stuckMin != null) {
+        meta += `<span class="badge badge-stuck" title="No progress for ${stuckMin}m">&#9888; stuck ${stuckMin}m</span>`;
+      }
+      const dateFmt = { month: '2-digit', day: '2-digit', year: '2-digit', hour: 'numeric', minute: '2-digit' };
+      const created = new Date(item.created_at).toLocaleString('en-US', dateFmt);
+      const updated = item.updated_at && item.updated_at !== item.created_at
+        ? new Date(item.updated_at).toLocaleString('en-US', dateFmt) : null;
+
+      // Staleness detection
+      const thresholds = backlog.config && backlog.config.thresholds || {};
+      if (item.status === 'refined' || item.status === 'ready') {
+        const daysSinceUpdate = (Date.now() - new Date(item.updated_at).getTime()) / 86400000;
+        const threshold = item.status === 'refined'
+          ? (thresholds.staleness_days_refined || 7)
+          : (thresholds.staleness_days_ready || 5);
+        if (daysSinceUpdate > threshold) card.className += ' stale-item';
+      }
+
+      card.innerHTML = `
+        <div class="card-reorder">
+          <button class="reorder-btn" ${isFirst ? 'disabled' : ''} title="Move up" data-dir="up">&#9650;</button>
+          <button class="reorder-btn" ${isLast ? 'disabled' : ''} title="Move down" data-dir="down">&#9660;</button>
+        </div>
+        <div class="card-title">${esc(item.title)}</div>
+        ${item.description ? `<div class="card-desc">${esc(item.description)}</div>` : ''}
+        <div class="card-meta">${meta}</div>
+        <div class="card-dates">
+          <span>c: ${created}</span>
+          ${updated ? `<span>u: ${updated}</span>` : ''}
+        </div>
+        ${isDiscarded ? `<button class="restore-btn" data-id="${item.id}">↩ Restore to backlog</button>` : ''}
+      `;
+
+      // Reorder button clicks
+      card.querySelectorAll('.reorder-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const dir = btn.dataset.dir;
+          reorderItem(item.id, dir);
+        });
+      });
+
+      // Restore button (discarded items only)
+      const restoreBtn = card.querySelector('.restore-btn');
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          restoreItem(item.id);
+        });
+      }
+
+      card.addEventListener('click', e => {
+        if (!card.classList.contains('dragging') && !e.target.closest('.reorder-btn')) {
+          openEditModal(item.id);
+        }
+      });
+
+      card.addEventListener('dragstart', e => {
+        draggedCard = card;
+        draggedItemId = item.id;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.id);
+        setTimeout(() => showGateIndicators(item), 0);
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        draggedCard = null;
+        draggedItemId = null;
+        clearGateIndicators();
+        clearDropLines();
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      });
+
+      card.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const col = card.closest('.column');
+        if (col && col.classList.contains('gate-blocked')) {
+          e.dataTransfer.dropEffect = 'none';
+          return;
+        }
+        e.dataTransfer.dropEffect = 'move';
+        // Show drop line above or below based on cursor position
+        const rect = card.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const body = card.closest('.column-body');
+        clearDropLines(body);
+        if (e.clientY < midY) {
+          // Show line ABOVE this card
+          const line = card.previousElementSibling;
+          if (line && line.classList.contains('drop-line')) line.classList.add('active');
+        } else {
+          // Show line BELOW this card
+          const line = card.nextElementSibling;
+          if (line && line.classList.contains('drop-line')) line.classList.add('active');
+        }
+      });
+
+      card.addEventListener('dragleave', e => {
+        const body = card.closest('.column-body');
+        if (body && !card.contains(e.relatedTarget)) {
+          clearDropLines(body);
+        }
+      });
+
+      card.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const col = card.closest('.column');
+        if (col && col.classList.contains('gate-blocked')) return;
+        clearDropLines();
+
+        // Determine if dropping before or after based on cursor position
+        const rect = card.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const targetStatus = col.dataset.status;
+
+        if (e.clientY < midY) {
+          handleDrop(targetStatus, item.id);
+        } else {
+          // Drop after this card = before the next card in this status
+          const sameStatusItems = backlog.items.filter(i => i.status === targetStatus);
+          const thisIdx = sameStatusItems.indexOf(item);
+          const nextItem = sameStatusItems[thisIdx + 1];
+          handleDrop(targetStatus, nextItem ? nextItem.id : null);
+        }
+      });
+
+      return card;
+    }
+
+    function clearDropLines(scope) {
+      const container = scope || document;
+      container.querySelectorAll('.drop-line.active').forEach(l => l.classList.remove('active'));
+    }
+
+    function reorderItem(itemId, direction) {
+      const idx = backlog.items.findIndex(i => i.id === itemId);
+      if (idx === -1) return;
+
+      const item = backlog.items[idx];
+      const sameStatus = backlog.items.filter(i => i.status === item.status);
+      const posInStatus = sameStatus.indexOf(item);
+
+      if (direction === 'up' && posInStatus === 0) return;
+      if (direction === 'down' && posInStatus === sameStatus.length - 1) return;
+
+      // Find the swap target in the global array
+      const swapWith = direction === 'up' ? sameStatus[posInStatus - 1] : sameStatus[posInStatus + 1];
+      const swapIdx = backlog.items.indexOf(swapWith);
+
+      // Swap in the global array
+      backlog.items[idx] = swapWith;
+      backlog.items[swapIdx] = item;
+      item.updated_at = new Date().toISOString();
+
+      saveBacklog();
+      renderBoard();
+      applyFilters();
+    }
+
+    // ── Gate visual indicators during drag ──
+    function showGateIndicators(item) {
+      document.querySelectorAll('.column').forEach(col => {
+        const statusId = col.dataset.status;
+        const result = checkGate(item, statusId);
+        const badge = col.querySelector('.gate-badge');
+
+        if (statusId === item.status) return; // Same column, skip
+
+        if (!result.allowed) {
+          col.classList.add('gate-blocked');
+          if (badge) {
+            badge.textContent = '\u{1F512} ' + result.missing.join(', ');
+            badge.style.display = 'inline';
+          }
+        } else {
+          col.classList.add('gate-allowed');
+          if (badge) {
+            badge.textContent = '\u2713';
+            badge.style.display = 'inline';
+          }
+        }
+      });
+    }
+
+    function clearGateIndicators() {
+      document.querySelectorAll('.column').forEach(col => {
+        col.classList.remove('gate-blocked', 'gate-allowed');
+        const badge = col.querySelector('.gate-badge');
+        if (badge) badge.style.display = 'none';
+      });
+    }
+
+    function handleDrop(targetStatus, beforeItemId) {
+      if (!draggedItemId) return;
+
+      const item = backlog.items.find(i => i.id === draggedItemId);
+      if (!item) return;
+
+      // Client-side gate check
+      const gateResult = checkGate(item, targetStatus);
+      if (!gateResult.allowed) {
+        showToast(`Blocked: requires ${gateResult.missing.join(', ')} first`, true);
+        clearGateIndicators();
+        return;
+      }
+
+      // Mark who moved it — server handles lane_history authoritatively
+      if (item.status && item.status !== targetStatus) {
+        item._moved_by = currentUser.name;
+      }
+
+      // Remove from current position
+      backlog.items = backlog.items.filter(i => i.id !== draggedItemId);
+
+      // Update status
+      item.status = targetStatus;
+      item.updated_at = new Date().toISOString();
+
+      if (beforeItemId) {
+        const targetIdx = backlog.items.findIndex(i => i.id === beforeItemId);
+        if (targetIdx >= 0) backlog.items.splice(targetIdx, 0, item);
+        else backlog.items.push(item);
+      } else {
+        let insertIdx = -1;
+        for (let i = backlog.items.length - 1; i >= 0; i--) {
+          if (backlog.items[i].status === targetStatus) { insertIdx = i + 1; break; }
+        }
+        if (insertIdx === -1) backlog.items.push(item);
+        else backlog.items.splice(insertIdx, 0, item);
+      }
+
+      saveBacklog();
+      renderBoard();
+    }
+
+    // ── Refinement Gate helper ──
+    function updateRefinementGateNote() {
+      const val = document.getElementById('item-refinement-gate').value;
+      const note = document.getElementById('refinement-gate-note');
+      note.style.display = val === 'complex' ? 'block' : 'none';
+    }
+
+    // ── Item Modal ──
+    function openAddModal() {
+      editingItemId = null;
+      document.getElementById('modal-title').textContent = 'New Item';
+      const numBadgeNew = document.getElementById('modal-item-number');
+      if (numBadgeNew) numBadgeNew.textContent = '';
+      document.getElementById('item-title').value = '';
+      document.getElementById('item-desc').value = '';
+      document.getElementById('item-status').value = firstStatusId();
+      document.getElementById('item-assigned').value = '';
+      document.getElementById('item-notes').value = '';
+      pendingLinks = [];
+      pendingRefs = [];
+      document.getElementById('staged-section').style.display = 'none';
+      document.getElementById('staged-actions-list').innerHTML = '';
+      document.getElementById('threads-list').innerHTML = '';
+      document.getElementById('new-thread-topic').value = '';
+      document.getElementById('new-link-type').value = '';
+      document.getElementById('new-link-reason').value = '';
+      document.getElementById('new-ref-system').value = '';
+      document.getElementById('new-ref-id').value = '';
+      document.getElementById('new-ref-url').value = '';
+      document.getElementById('item-complexity').value = '';
+      document.getElementById('item-category').value = '';
+      document.getElementById('item-priority-weight').value = '';
+      document.getElementById('item-tags').value = '';
+      document.getElementById('item-refinement-gate').value = '';
+      updateRefinementGateNote();
+      populateLinkTargetDropdown(null);
+      renderPendingLinks();
+      renderPendingRefs();
+      document.getElementById('item-status').disabled = true;
+      // Hide tabs for new items
+      document.getElementById('modal-tabs').style.display = 'none';
+      switchModalTab('details');
+      document.getElementById('modal-overlay').classList.add('active');
+      setTimeout(() => document.getElementById('item-title').focus(), 50);
+    }
+
+    function openEditModal(id) {
+      const item = backlog.items.find(i => i.id === id);
+      if (!item) return;
+
+      editingItemId = id;
+      const itemPos = backlog.items.indexOf(item) + 1;
+      document.getElementById('modal-title').textContent = itemPos > 0 ? `Edit Item: #${itemPos}` : 'Edit Item';
+      const numBadge = document.getElementById('modal-item-number');
+      if (numBadge) numBadge.textContent = '';
+      document.getElementById('item-title').value = item.title;
+      document.getElementById('item-desc').value = item.description || '';
+      document.getElementById('item-status').value = item.status;
+      document.getElementById('item-assigned').value = item.assigned_to || '';
+      document.getElementById('item-notes').value = item.notes || '';
+      document.getElementById('item-complexity').value = item.complexity || '';
+      document.getElementById('item-category').value = item.category || '';
+      document.getElementById('item-priority-weight').value = item.priority_weight != null ? item.priority_weight : '';
+      document.getElementById('item-tags').value = (item.tags || []).join(', ');
+      document.getElementById('item-refinement-gate').value = item.refinement_gate || '';
+      updateRefinementGateNote();
+      document.getElementById('item-status').disabled = false;
+      document.getElementById('new-thread-topic').value = '';
+      document.getElementById('new-link-type').value = '';
+      document.getElementById('new-link-reason').value = '';
+      document.getElementById('new-ref-system').value = '';
+      document.getElementById('new-ref-id').value = '';
+      document.getElementById('new-ref-url').value = '';
+      pendingRefs = [];
+
+      // Show tabs for existing items
+      document.getElementById('modal-tabs').style.display = 'flex';
+      switchModalTab('details');
+      renderStagedActions(item.staged_actions || []);
+      renderThreads(item.threads || []);
+      renderLinks(item);
+      renderExternalRefs(item);
+      renderHistory(item);
+      renderIntelligence(item);
+      document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    function switchModalTab(tabName) {
+      document.querySelectorAll('.modal-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
+      });
+      document.querySelectorAll('.modal-tab-content').forEach(c => {
+        c.classList.toggle('active', c.id === `tab-${tabName}`);
+      });
+    }
+
+    function switchSettingsTab(tabName) {
+      document.querySelectorAll('#settings-overlay .stab').forEach(t => {
+        t.classList.toggle('active', t.dataset.stab === tabName);
+      });
+      document.querySelectorAll('#settings-overlay .modal-tab-content').forEach(c => {
+        c.classList.toggle('active', c.id === `stab-${tabName}`);
+      });
+    }
+
+    // ── Graph pan / zoom ──
+    let _graphZoom = { scale: 1, tx: 0, ty: 0, dragging: false, hasDragged: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
+    let _graphFitted = false;
+
+    function setGraphTransform() {
+      const canvas = document.getElementById('graph-canvas');
+      if (canvas) canvas.style.transform = `translate(${_graphZoom.tx}px,${_graphZoom.ty}px) scale(${_graphZoom.scale})`;
+    }
+
+    function graphZoomIn() {
+      _graphZoom.scale = Math.min(_graphZoom.scale * 1.25, 4);
+      setGraphTransform();
+    }
+
+    function graphZoomOut() {
+      _graphZoom.scale = Math.max(_graphZoom.scale / 1.25, 0.05);
+      setGraphTransform();
+    }
+
+    function graphZoomFit() {
+      const vp = document.getElementById('graph-viewport');
+      const canvas = document.getElementById('graph-canvas');
+      if (!vp || !canvas) return;
+      const vpW = vp.clientWidth, vpH = vp.clientHeight;
+      const cW = parseFloat(canvas.dataset.w) + 40;
+      const cH = parseFloat(canvas.dataset.h) + 40;
+      const scale = Math.min(vpW / cW, vpH / cH, 1);
+      _graphZoom.scale = scale;
+      _graphZoom.tx = Math.max(0, (vpW - cW * scale) / 2);
+      _graphZoom.ty = Math.max(0, (vpH - cH * scale) / 2);
+      setGraphTransform();
+    }
+
+    function initGraphInteraction() {
+      const vp = document.getElementById('graph-viewport');
+      if (!vp || vp._graphBound) return;
+      vp._graphBound = true;
+
+      vp.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = Math.max(0.05, Math.min(4, _graphZoom.scale * factor));
+        _graphZoom.tx = mx - (mx - _graphZoom.tx) * (newScale / _graphZoom.scale);
+        _graphZoom.ty = my - (my - _graphZoom.ty) * (newScale / _graphZoom.scale);
+        _graphZoom.scale = newScale;
+        setGraphTransform();
+      }, { passive: false });
+
+      vp.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        _graphZoom.dragging = true;
+        _graphZoom.hasDragged = false;
+        _graphZoom.startX = e.clientX; _graphZoom.startY = e.clientY;
+        _graphZoom.startTx = _graphZoom.tx; _graphZoom.startTy = _graphZoom.ty;
+        vp.classList.add('dragging');
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!_graphZoom.dragging) return;
+        const dx = e.clientX - _graphZoom.startX, dy = e.clientY - _graphZoom.startY;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) _graphZoom.hasDragged = true;
+        _graphZoom.tx = _graphZoom.startTx + dx;
+        _graphZoom.ty = _graphZoom.startTy + dy;
+        setGraphTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (_graphZoom.dragging) {
+          _graphZoom.dragging = false;
+          const vp2 = document.getElementById('graph-viewport');
+          if (vp2) vp2.classList.remove('dragging');
+        }
+      });
+
+      // Suppress click-on-node after a drag
+      vp.addEventListener('click', (e) => {
+        if (_graphZoom.hasDragged) { e.stopPropagation(); _graphZoom.hasDragged = false; }
+      }, true);
+    }
+
+    function renderHistory(item) {
+      const container = document.getElementById('history-content');
+      const history = item.lane_history || [];
+      const gateFrom = item.gate_from || 0;
+      const histTimeFmt = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+
+      // Helper: extract lane id from old (string) or new (object) format
+      function entryLane(e) { return typeof e === 'string' ? e : e.lane; }
+      function entryAt(e) { return typeof e === 'object' && e.at ? new Date(e.at).toLocaleString('en-US', histTimeFmt) : null; }
+      function entryBy(e) { return typeof e === 'object' && e.by ? e.by : null; }
+
+      if (history.length === 0) {
+        const createdAt = item.created_at ? new Date(item.created_at).toLocaleString('en-US', histTimeFmt) : '';
+        container.innerHTML = `
+          <div class="history-empty">
+            No lane movement yet — item is still in its first lane.
+          </div>
+          <div class="history-current">
+            <div class="history-entry" style="padding:0;">
+              <div class="history-dot" style="background:${getStatusColor(item.status)};">&#9679;</div>
+              <div class="history-body">
+                <div class="history-label">${esc(getStatusLabel(item.status))}</div>
+                <div class="history-sublabel">Current lane${createdAt ? ` &middot; since ${createdAt}` : ''}</div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="history-timeline">';
+
+      history.forEach((entry, i) => {
+        const laneId = entryLane(entry);
+        const at = entryAt(entry);
+        const by = entryBy(entry);
+        const color = getStatusColor(laneId);
+        const label = getStatusLabel(laneId);
+        const isBeforeGate = i < gateFrom;
+        const stepNum = i + 1;
+
+        // Show reset marker at the gate_from boundary
+        if (i === gateFrom && gateFrom > 0) {
+          html += `<div class="history-reset">&#8635; Moved backward — gates reset from here</div>`;
+        }
+
+        // Build sublabel with time + who
+        let sublabel = '';
+        if (at || by) {
+          const parts = [];
+          if (at) parts.push(at);
+          if (by) parts.push(`by ${esc(by)}`);
+          sublabel = parts.join(' &middot; ');
+        }
+
+        html += `
+          <div class="history-entry" ${isBeforeGate ? 'style="opacity:0.45;"' : ''}>
+            <div class="history-dot" style="background:${color};">${stepNum}</div>
+            <div class="history-body">
+              <div class="history-label">${esc(label)}${isBeforeGate ? ' <span style="font-size:10px;color:#9ca3af;font-weight:400;">(prior journey)</span>' : ''}</div>
+              ${sublabel ? `<div class="history-sublabel">${sublabel}</div>` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      // Current status
+      const lastEntry = history[history.length - 1];
+      const lastAt = entryAt(lastEntry);
+      const lastBy = entryBy(lastEntry);
+      let currentSub = 'Current lane';
+      if (lastAt) currentSub += ` &middot; moved here ${lastAt}`;
+      if (lastBy) currentSub += ` by ${esc(lastBy)}`;
+
+      html += `</div>`;
+      html += `
+        <div class="history-current">
+          <div class="history-entry" style="padding:0;">
+            <div class="history-dot" style="background:${getStatusColor(item.status)};">${history.length + 1}</div>
+            <div class="history-body">
+              <div class="history-label">${esc(getStatusLabel(item.status))}</div>
+              <div class="history-sublabel">${currentSub}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      container.innerHTML = html;
+    }
+
+    function renderIntelligence(item) {
+      const container = document.getElementById('intel-content');
+      const sd = scoreData[item.id];
+      if (!sd) {
+        container.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:24px;">No score data yet. Scores are computed when items have been saved.</div>';
+        return;
+      }
+      const sc = sd.score;
+      const colorClass = sc > 7 ? '#166534' : sc > 4 ? '#854d0e' : '#64748b';
+      const bd = sd.score_breakdown || {};
+      let breakdownHtml = '';
+      const labels = {
+        base_priority: 'Base Priority', unblock: 'Unblock Value', freshness: 'Freshness',
+        complexity: 'Complexity', blocked_penalty: 'Blocked Penalty', quick_win: 'Quick Win',
+        reopen: 'Reopen Penalty', skip_floor: 'Skip Floor', critical_bug: 'Critical Bug Boost'
+      };
+      for (const [key, label] of Object.entries(labels)) {
+        const val = bd[key] || 0;
+        if (val === 0 && key !== 'base_priority') continue;
+        const sign = val > 0 ? '+' : '';
+        breakdownHtml += `<dt>${label}</dt><dd>${sign}${val.toFixed(1)}</dd>`;
+      }
+      let recHtml = '';
+      if (sd.recommended_agent) {
+        recHtml += `<div class="intel-rec"><div class="intel-rec-label">Recommended Agent</div><div class="intel-rec-value">${esc(sd.recommended_agent)}</div></div>`;
+      }
+      if (sd.recommended_model) {
+        recHtml += `<div class="intel-rec"><div class="intel-rec-label">Recommended Model</div><div class="intel-rec-value">${esc(sd.recommended_model)}</div></div>`;
+      }
+
+      // Readiness section
+      let readinessHtml = '';
+      const rd = sd.readiness;
+      if (rd) {
+        const pct = Math.round(rd.score * 100);
+        const levelColors = { ready: '#166534', startable: '#854d0e', not_ready: '#64748b' };
+        const levelColor = levelColors[rd.level] || '#64748b';
+        const barColor = rd.score >= 0.9 ? '#22c55e' : rd.score >= 0.7 ? '#f59e0b' : '#94a3b8';
+        let signalsHtml = '';
+        if (rd.signals && rd.signals.length > 0) {
+          signalsHtml = rd.signals.map(s =>
+            `<div style="font-size:11px;color:#6b7280;padding:2px 0;">\u2713 ${esc(s.type.replace(/_/g,' '))}${s.source ? ' <span style="color:#9ca3af;">by ' + esc(s.source) + '</span>' : ''}</div>`
+          ).join('');
+        }
+        let blockersHtml = '';
+        if (rd.blockers && rd.blockers.length > 0) {
+          blockersHtml = '<div style="margin-top:6px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Blockers</div>';
+          blockersHtml += rd.blockers.map(b =>
+            `<div style="font-size:11px;color:#6b7280;padding:2px 0;">\u26a0 ${esc(b.blocker_id)} — ${Math.round(b.readiness * 100)}% ready</div>`
+          ).join('');
+        }
+        readinessHtml = `
+          <div style="margin-top:12px;padding:10px 12px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:12px;font-weight:600;color:#374151;">Readiness</span>
+              <span style="font-size:11px;padding:2px 7px;border-radius:9999px;font-weight:500;color:${levelColor};background:${levelColor}15;">${rd.level.replace('_',' ')}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;"></div>
+              </div>
+              <span style="font-size:12px;font-weight:600;color:${barColor};min-width:32px;text-align:right;">${pct}%</span>
+            </div>
+            <div style="font-size:11px;color:#9ca3af;">Status: +${Math.round(rd.status_contribution*100)}%${rd.signal_contribution > 0 ? ' &middot; Signals: +' + Math.round(rd.signal_contribution*100) + '%' : ''}</div>
+            ${signalsHtml ? '<div style="margin-top:6px;">' + signalsHtml + '</div>' : ''}
+            ${blockersHtml}
+          </div>`;
+      }
+
+      // Tribunal justification section
+      let tribunalHtml = '';
+      if (recommendData && recommendData.picked) {
+        const picked = recommendData.picked;
+        const isPicked = picked.item_id === item.id;
+        if (isPicked) {
+          const confColor = picked.confidence === 'high' ? '#166534' : picked.confidence === 'medium' ? '#854d0e' : '#dc2626';
+          let lensesHtml = (picked.supporting_lenses || []).map(l => {
+            const icons = { urgency: '\u23f1', leverage: '\u26a1', agent_fit: '\ud83c\udfaf', risk: '\u26a0\ufe0f', momentum: '\ud83d\ude80' };
+            return `<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid #f3f4f6;">
+              <span style="font-size:13px;">${icons[l.lens] || '\u25cf'}</span>
+              <span style="font-size:12px;font-weight:500;color:#374151;min-width:70px;">${esc(l.lens)}</span>
+              <span style="font-size:12px;color:#6b7280;flex:1;">${esc(l.argument)}</span>
+              <span style="font-size:11px;color:#9ca3af;font-variant-numeric:tabular-nums;">+${l.weight.toFixed(1)}</span>
+            </div>`;
+          }).join('');
+
+          let shadowHtml = (recommendData.shadow_ranking || []).slice(0, 3).map(s =>
+            `<div style="padding:4px 0;border-bottom:1px solid #f3f4f6;">
+              <div style="font-size:12px;font-weight:500;color:#374151;">${esc(s.title)} <span style="color:#9ca3af;">[${s.score}]</span></div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Why not: ${esc(s.lost_reason)}</div>
+            </div>`
+          ).join('');
+
+          tribunalHtml = `
+            <div style="margin-top:16px;padding-top:12px;border-top:2px solid #e5e7eb;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-size:13px;font-weight:600;color:#111827;">Tribunal Verdict</span>
+                <span style="font-size:11px;padding:2px 8px;border-radius:9999px;font-weight:500;color:${confColor};background:${confColor}15;">${picked.confidence} confidence</span>
+              </div>
+              <div style="font-size:12px;color:#374151;padding:8px 12px;background:#f0fdf4;border-radius:6px;border-left:3px solid #22c55e;margin-bottom:10px;">
+                <strong>Recommended pick.</strong> ${esc(picked.reasoning)}${picked.status_note ? '<br><span style="color:#d97706;font-size:11px;">Note: ' + esc(picked.status_note) + '</span>' : ''}
+              </div>
+              <div style="margin-bottom:6px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Supporting Lenses</div>
+              ${lensesHtml || '<div style="font-size:12px;color:#9ca3af;">No active lens arguments</div>'}
+              ${shadowHtml ? '<div style="margin-top:12px;margin-bottom:6px;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Considered &amp; Passed</div>' + shadowHtml : ''}
+            </div>`;
+        } else {
+          // This item was NOT picked — show why not from shadow ranking
+          const shadow = (recommendData.shadow_ranking || []).find(s => s.item_id === item.id);
+          if (shadow) {
+            tribunalHtml = `
+              <div style="margin-top:16px;padding-top:12px;border-top:2px solid #e5e7eb;">
+                <div style="font-size:13px;font-weight:600;color:#111827;margin-bottom:8px;">Tribunal Verdict</div>
+                <div style="font-size:12px;color:#374151;padding:8px 12px;background:#fef3c7;border-radius:6px;border-left:3px solid #f59e0b;margin-bottom:6px;">
+                  <strong>Not recommended.</strong> ${esc(shadow.lost_reason)}
+                </div>
+                <div style="font-size:11px;color:#9ca3af;">
+                  Lost on: <strong>${esc(shadow.lost_on_lens)}</strong> lens &middot;
+                  Tribunal score: ${shadow.tribunal_score} &middot;
+                  Picked instead: <strong>${esc(picked.title)}</strong> [${picked.score}]
+                </div>
+              </div>`;
+          } else {
+            tribunalHtml = `
+              <div style="margin-top:16px;padding-top:12px;border-top:2px solid #e5e7eb;">
+                <div style="font-size:13px;font-weight:600;color:#111827;margin-bottom:8px;">Tribunal Verdict</div>
+                <div style="font-size:12px;color:#9ca3af;padding:8px 12px;background:#f9fafb;border-radius:6px;">
+                  Not in candidate pool (status: ${esc(item.status)})
+                </div>
+              </div>`;
+          }
+        }
+      }
+
+      container.innerHTML = `
+        <div class="intel-score-big" style="color:${colorClass};">${sc}</div>
+        <dl class="intel-breakdown">${breakdownHtml}</dl>
+        ${recHtml}
+        ${readinessHtml}
+        <div class="intel-meta">
+          <div class="intel-meta-item"><div class="intel-meta-label">Reopen Count</div><div class="intel-meta-value">${item.reopen_count || 0}</div></div>
+          <div class="intel-meta-item"><div class="intel-meta-label">Skip Count</div><div class="intel-meta-value">${item.skip_count || 0}</div></div>
+        </div>
+        ${tribunalHtml}
+      `;
+    }
+
+    function getStatusColor(id) {
+      const s = statuses.find(s => s.id === id);
+      return s ? s.color : '#94a3b8';
+    }
+
+    function closeModal(e) {
+      if (e && e.target !== document.getElementById('modal-overlay')) return;
+      document.getElementById('modal-overlay').classList.remove('active');
+      editingItemId = null;
+    }
+
+    function saveItem() {
+      const title = document.getElementById('item-title').value.trim();
+      if (!title) { document.getElementById('item-title').focus(); return; }
+
+      const now = new Date().toISOString();
+      const desc = document.getElementById('item-desc').value.trim();
+      const status = document.getElementById('item-status').value;
+      const assignedTo = document.getElementById('item-assigned').value.trim() || null;
+      const notes = document.getElementById('item-notes').value.trim();
+      const complexity = document.getElementById('item-complexity').value || null;
+      const category = document.getElementById('item-category').value || null;
+      const priorityWeightRaw = document.getElementById('item-priority-weight').value;
+      const priorityWeight = priorityWeightRaw ? Math.min(10, Math.max(1, parseInt(priorityWeightRaw))) : null;
+      const tagsRaw = document.getElementById('item-tags').value;
+      const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const refinementGate = document.getElementById('item-refinement-gate').value || null;
+
+      if (editingItemId) {
+        const item = backlog.items.find(i => i.id === editingItemId);
+        if (item) {
+          // Gate check if status is changing
+          if (status !== item.status) {
+            const gateResult = checkGate(item, status);
+            if (!gateResult.allowed) {
+              showToast(`Blocked: requires ${gateResult.missing.join(', ')} first`, true);
+              return;
+            }
+            // Mark who moved it — server handles lane_history authoritatively
+            item._moved_by = currentUser.name;
+          }
+          item.title = title;
+          item.description = desc;
+          item.status = status;
+          item.assigned_to = assignedTo;
+          item.notes = notes;
+          item.complexity = complexity;
+          item.category = category;
+          item.priority_weight = priorityWeight;
+          item.tags = tags;
+          item.refinement_gate = refinementGate;
+          item.updated_at = now;
+        }
+      } else {
+        backlog.items.push({
+          id: genId(),
+          title,
+          description: desc,
+          status: firstStatusId(),
+          assigned_to: assignedTo,
+          lane_history: [],
+          gate_from: 0,
+          threads: [],
+          links: [...pendingLinks],
+          external_refs: [...pendingRefs],
+          notes,
+          complexity,
+          category,
+          priority_weight: priorityWeight,
+          tags,
+          refinement_gate: refinementGate,
+          reopen_count: 0,
+          skip_count: 0,
+          created_at: now,
+          updated_at: now
+        });
+        pendingLinks = [];
+        pendingRefs = [];
+      }
+
+      saveBacklog();
+      closeModal();
+      renderBoard();
+      populateAssigneeDropdown();
+      applyFilters();
+    }
+
+    // ── Staged Actions ──
+    function renderStagedActions(actions) {
+      const section = document.getElementById('staged-section');
+      const list = document.getElementById('staged-actions-list');
+      if (!actions || actions.length === 0) {
+        section.style.display = 'none';
+        list.innerHTML = '';
+        return;
+      }
+      section.style.display = 'block';
+      list.innerHTML = actions.map((a, i) => {
+        const statusClass = a.status === 'approved' ? 'approved' : a.status === 'rejected' ? 'rejected' : '';
+        const isPending = a.status === 'pending';
+        const contextSummary = a.context && Object.keys(a.context).length > 0
+          ? Object.entries(a.context).map(([k, v]) => `${esc(k)}: ${esc(String(v))}`).join(', ')
+          : '';
+        const resolvedInfo = !isPending
+          ? `<div class="staged-action-meta">${esc(a.status)} by ${esc(a.resolved_by || '?')} at ${a.resolved_at || '?'}${a.reject_reason ? ' — ' + esc(a.reject_reason) : ''}</div>`
+          : '';
+        return `
+          <div class="staged-action-item ${statusClass}">
+            <div class="staged-action-header">
+              <span class="staged-action-type">${esc(a.type)}</span>
+              ${isPending ? `
+                <div class="staged-action-btns">
+                  <button class="approve-btn" onclick="approveStagedAction(${i})">Approve</button>
+                  <button class="reject-btn" onclick="rejectStagedAction(${i})">Reject</button>
+                </div>
+              ` : ''}
+            </div>
+            <div class="staged-action-desc">${esc(a.description)}</div>
+            ${contextSummary ? `<div class="staged-action-meta">${contextSummary}</div>` : ''}
+            <div class="staged-action-meta">Staged by ${esc(a.staged_by || '?')} at ${a.staged_at || '?'}</div>
+            ${resolvedInfo}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function approveStagedAction(index) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.staged_actions || !item.staged_actions[index]) return;
+      const action = item.staged_actions[index];
+      if (action.status !== 'pending') return;
+      action.status = 'approved';
+      action.resolved_at = new Date().toISOString();
+      action.resolved_by = currentUser.name || 'board';
+      item.updated_at = new Date().toISOString();
+      renderStagedActions(item.staged_actions);
+      saveBacklog();
+      renderBoard();
+    }
+
+    function rejectStagedAction(index) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.staged_actions || !item.staged_actions[index]) return;
+      const action = item.staged_actions[index];
+      if (action.status !== 'pending') return;
+      const reason = prompt('Rejection reason (optional):');
+      action.status = 'rejected';
+      action.resolved_at = new Date().toISOString();
+      action.resolved_by = currentUser.name || 'board';
+      action.reject_reason = reason || null;
+      item.updated_at = new Date().toISOString();
+      renderStagedActions(item.staged_actions);
+      saveBacklog();
+      renderBoard();
+    }
+
+    // ── Threads ──
+    function renderThreads(threads) {
+      const list = document.getElementById('threads-list');
+      list.innerHTML = threads.map((t, i) => {
+        const resolved = t.resolved;
+        const msgs = (t.thread || []).map(m => {
+          const label = m.role === 'user' ? currentUser.name : 'agent';
+          return `
+          <div class="thread-msg">
+            <span class="msg-role ${m.role}">${esc(label)}:</span>
+            <span class="msg-text">${esc(m.message)}</span>
+          </div>
+          `;
+        }).join('');
+        const tagged = t.waiting_on === 'agent';
+        return `
+          <div class="thread-item ${resolved ? 'resolved' : 'unresolved'}">
+            <div class="thread-topic">
+              <span class="thread-topic-text" onclick="toggleThread(${i})">${esc(t.topic)}</span>
+              <div class="thread-actions">
+                ${!resolved ? `<button class="thread-tag-btn ${tagged ? 'is-tagged' : ''}"
+                        onclick="toggleTag(${i})">
+                  ${tagged ? '@Agent' : '@ Tag'}
+                </button>` : ''}
+                <button class="thread-resolve-btn ${resolved ? 'is-resolved' : ''}"
+                        onclick="toggleResolve(${i})">
+                  ${resolved ? 'Resolved' : 'Resolve'}
+                </button>
+              </div>
+            </div>
+            <div class="thread-messages" id="thread-msgs-${i}">
+              ${msgs}
+              ${!resolved ? `
+                <div class="thread-reply-row">
+                  <input type="text" placeholder="Reply..." onkeydown="if(event.key==='Enter')replyToThread(${i},this.value,this)">
+                  <button class="btn btn-ghost btn-sm" onclick="replyToThread(${i},this.previousElementSibling.value,this.previousElementSibling)">Reply</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleThread(index) {
+      const msgs = document.getElementById(`thread-msgs-${index}`);
+      if (msgs) msgs.classList.toggle('thread-collapsed');
+    }
+
+    function addThread() {
+      const input = document.getElementById('new-thread-topic');
+      const topic = input.value.trim();
+      if (!topic || !editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item) return;
+      if (!item.threads) item.threads = [];
+      const now = new Date().toISOString();
+      item.threads.push({ topic, resolved: false, waiting_on: null, created_at: now, thread: [{ role: 'user', message: topic, at: now }] });
+      input.value = '';
+      renderThreads(item.threads);
+      saveBacklog();
+    }
+
+    function replyToThread(threadIndex, message, inputEl) {
+      if (!message || !message.trim() || !editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.threads || !item.threads[threadIndex]) return;
+      item.threads[threadIndex].thread.push({ role: 'user', message: message.trim(), at: new Date().toISOString() });
+      item.updated_at = new Date().toISOString();
+      renderThreads(item.threads);
+      saveBacklog();
+    }
+
+    function toggleResolve(threadIndex) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.threads || !item.threads[threadIndex]) return;
+      item.threads[threadIndex].resolved = !item.threads[threadIndex].resolved;
+      if (item.threads[threadIndex].resolved) item.threads[threadIndex].waiting_on = null;
+      item.updated_at = new Date().toISOString();
+      renderThreads(item.threads);
+      saveBacklog();
+    }
+
+    function toggleTag(threadIndex) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.threads || !item.threads[threadIndex]) return;
+      const current = item.threads[threadIndex].waiting_on;
+      item.threads[threadIndex].waiting_on = current === 'agent' ? null : 'agent';
+      item.updated_at = new Date().toISOString();
+      renderThreads(item.threads);
+      saveBacklog();
+    }
+
+    // ── Links ──
+    function getReverseLinkCount(itemId) {
+      let count = 0;
+      backlog.items.forEach(other => {
+        if (other.id === itemId) return;
+        (other.links || []).forEach(link => {
+          if (link.item_id === itemId) count++;
+        });
+      });
+      return count;
+    }
+
+    function renderLinks(item) {
+      const list = document.getElementById('links-list');
+      const forwardLinks = item.links || [];
+
+      // Find reverse links: other items that link TO this item
+      const reverseLinks = [];
+      backlog.items.forEach((other, otherIdx) => {
+        if (other.id === item.id) return;
+        (other.links || []).forEach(link => {
+          if (link.item_id === item.id) {
+            reverseLinks.push({
+              type: link.type,
+              reason: link.reason,
+              sourceId: other.id,
+              sourceTitle: other.title,
+              sourcePos: otherIdx + 1
+            });
+          }
+        });
+      });
+
+      let html = '';
+
+      // Forward links
+      forwardLinks.forEach((link, i) => {
+        const target = backlog.items.find(it => it.id === link.item_id);
+        const targetPos = target ? backlog.items.indexOf(target) + 1 : '?';
+        const targetTitle = target ? target.title : '(deleted item)';
+        html += `
+          <div class="link-item">
+            <span class="link-type-badge link-type-${link.type}">${esc(link.type)}</span>
+            <div class="link-body">
+              <div class="link-target">#${targetPos} ${esc(targetTitle)}</div>
+              ${link.reason ? `<div class="link-reason">${esc(link.reason)}</div>` : ''}
+            </div>
+            <button class="link-remove-btn" onclick="removeLink(${i})" title="Remove link">&times;</button>
+          </div>
+        `;
+      });
+
+      // Reverse links
+      reverseLinks.forEach(rl => {
+        html += `
+          <div class="link-item reverse">
+            <span class="link-type-badge link-type-${rl.type}">${esc(rl.type)}</span>
+            <div class="link-body">
+              <div class="link-target">#${rl.sourcePos} ${esc(rl.sourceTitle)} <span class="link-reverse-hint">(from #${rl.sourcePos})</span></div>
+              ${rl.reason ? `<div class="link-reason">${esc(rl.reason)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      if (forwardLinks.length === 0 && reverseLinks.length === 0) {
+        html = '<div style="font-size:12px;color:#9ca3af;padding:4px 0;">No links yet</div>';
+      }
+
+      list.innerHTML = html;
+
+      // Populate the target dropdown
+      populateLinkTargetDropdown(item.id);
+    }
+
+    function renderExternalRefs(item) {
+      const list = document.getElementById('ext-refs-list');
+      const refs = item.external_refs || [];
+      if (refs.length === 0) {
+        list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:4px 0;">No external refs</div>';
+        return;
+      }
+      let html = '';
+      refs.forEach((ref, i) => {
+        const sysLabel = esc(ref.system || '');
+        const refId = esc(ref.id || '');
+        const sanitized = sanitizeUrl(ref.url);
+        const idHtml = sanitized
+          ? `<a href="${esc(sanitized)}" target="_blank" rel="noopener noreferrer">${refId}</a>`
+          : refId;
+        html += `
+          <div class="ext-ref-item">
+            <span class="ext-ref-system-badge">${sysLabel}</span>
+            <span class="ext-ref-id">${idHtml}</span>
+            <button class="ext-ref-remove-btn" onclick="removeRef(${i})" title="Remove ref">&times;</button>
+          </div>
+        `;
+      });
+      list.innerHTML = html;
+    }
+
+    function populateLinkTargetDropdown(excludeId) {
+      const targetSelect = document.getElementById('new-link-target');
+      const items = backlog.items.filter(it => it.id !== excludeId);
+      if (items.length === 0) {
+        targetSelect.innerHTML = '<option value="" disabled selected>No items yet</option>';
+      } else {
+        targetSelect.innerHTML = '<option value="" disabled selected>Select item...</option>' +
+          items.map(it => {
+            const pos = backlog.items.indexOf(it) + 1;
+            return `<option value="${it.id}">#${pos} ${esc(it.title)}</option>`;
+          }).join('');
+      }
+    }
+
+    function renderPendingLinks() {
+      const list = document.getElementById('links-list');
+      if (pendingLinks.length === 0) {
+        list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:4px 0;">No links yet</div>';
+        return;
+      }
+      list.innerHTML = pendingLinks.map((link, i) => {
+        const target = backlog.items.find(it => it.id === link.item_id);
+        const pos = target ? backlog.items.indexOf(target) + 1 : '?';
+        const title = target ? target.title : '(deleted item)';
+        return `
+          <div class="link-item">
+            <span class="link-type-badge link-type-${link.type}">${esc(link.type)}</span>
+            <div class="link-body">
+              <div class="link-target">#${pos} ${esc(title)}</div>
+              ${link.reason ? `<div class="link-reason">${esc(link.reason)}</div>` : ''}
+            </div>
+            <button class="link-remove-btn" onclick="removePendingLink(${i})" title="Remove link">&times;</button>
+          </div>`;
+      }).join('');
+    }
+
+    function removePendingLink(index) {
+      pendingLinks.splice(index, 1);
+      renderPendingLinks();
+    }
+
+    function addLink() {
+      const type = document.getElementById('new-link-type').value;
+      const targetId = document.getElementById('new-link-target').value;
+      const reason = document.getElementById('new-link-reason').value.trim();
+
+      if (!type || !targetId) return;
+
+      if (!editingItemId) {
+        // New item not yet saved — buffer in pendingLinks
+        if (pendingLinks.some(l => l.item_id === targetId && l.type === type)) {
+          showToast('Link already exists', true);
+          return;
+        }
+        pendingLinks.push({ item_id: targetId, type, reason: reason || undefined });
+        document.getElementById('new-link-type').value = '';
+        document.getElementById('new-link-reason').value = '';
+        renderPendingLinks();
+        return;
+      }
+
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item) return;
+      if (!item.links) item.links = [];
+
+      // Prevent duplicate links to the same item with the same type
+      if (item.links.some(l => l.item_id === targetId && l.type === type)) {
+        showToast('Link already exists', true);
+        return;
+      }
+
+      item.links.push({ item_id: targetId, type, reason: reason || undefined });
+      item.updated_at = new Date().toISOString();
+      document.getElementById('new-link-type').value = '';
+      document.getElementById('new-link-reason').value = '';
+      renderLinks(item);
+      saveBacklog();
+      renderBoard();
+      applyFilters();
+    }
+
+    function removeLink(index) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.links) return;
+      item.links.splice(index, 1);
+      item.updated_at = new Date().toISOString();
+      renderLinks(item);
+      saveBacklog();
+      renderBoard();
+      applyFilters();
+    }
+
+    // ── External Refs editing (mirrors link editor) ──
+
+    function renderPendingRefs() {
+      const list = document.getElementById('ext-refs-list');
+      if (pendingRefs.length === 0) {
+        list.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:4px 0;">No external refs</div>';
+        return;
+      }
+      list.innerHTML = pendingRefs.map((ref, i) => {
+        const sysLabel = esc(ref.system || '');
+        const refId = esc(ref.id || '');
+        const sanitized = sanitizeUrl(ref.url);
+        const idHtml = sanitized
+          ? `<a href="${esc(sanitized)}" target="_blank" rel="noopener noreferrer">${refId}</a>`
+          : refId;
+        return `
+          <div class="ext-ref-item">
+            <span class="ext-ref-system-badge">${sysLabel}</span>
+            <span class="ext-ref-id">${idHtml}</span>
+            <button class="ext-ref-remove-btn" onclick="removePendingRef(${i})" title="Remove ref">&times;</button>
+          </div>`;
+      }).join('');
+    }
+
+    function removePendingRef(index) {
+      pendingRefs.splice(index, 1);
+      renderPendingRefs();
+    }
+
+    function addRef() {
+      const system = document.getElementById('new-ref-system').value.trim();
+      const id = document.getElementById('new-ref-id').value.trim();
+      const url = document.getElementById('new-ref-url').value.trim();
+
+      if (!system || !id) {
+        showToast('System and ID are required', true);
+        return;
+      }
+
+      if (url && !/^https?:\/\//i.test(url)) {
+        showToast('URL must start with http:// or https://', true);
+        return;
+      }
+
+      if (!editingItemId) {
+        // New item not yet saved — buffer in pendingRefs
+        pendingRefs.push({ system, id, url: url || undefined });
+        document.getElementById('new-ref-system').value = '';
+        document.getElementById('new-ref-id').value = '';
+        document.getElementById('new-ref-url').value = '';
+        renderPendingRefs();
+        return;
+      }
+
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item) return;
+      if (!item.external_refs) item.external_refs = [];
+
+      item.external_refs.push({ system, id, url: url || undefined });
+      item.updated_at = new Date().toISOString();
+      document.getElementById('new-ref-system').value = '';
+      document.getElementById('new-ref-id').value = '';
+      document.getElementById('new-ref-url').value = '';
+      renderExternalRefs(item);
+      saveBacklog();
+      renderBoard();
+      applyFilters();
+    }
+
+    function removeRef(index) {
+      if (!editingItemId) return;
+      const item = backlog.items.find(i => i.id === editingItemId);
+      if (!item || !item.external_refs) return;
+      item.external_refs.splice(index, 1);
+      item.updated_at = new Date().toISOString();
+      renderExternalRefs(item);
+      saveBacklog();
+      renderBoard();
+      applyFilters();
+    }
+
+    // ═══════════════════════════════════════════════
+    // ── Teams Panel ──
+    // ═══════════════════════════════════════════════
+
+    function openTeams() {
+      const content = document.getElementById('teams-content');
+      content.innerHTML = '<p style="color:#9ca3af;font-size:13px;">Loading…</p>';
+      document.getElementById('teams-overlay').classList.add('active');
+
+      fetch('/api/agents')
+        .then(r => r.json())
+        .then(data => renderTeams(data.agents || {}))
+        .catch(() => {
+          content.innerHTML = '<div class="team-empty">Could not load team data.</div>';
+        });
+    }
+
+    function closeTeams(e) {
+      if (e && e.target !== document.getElementById('teams-overlay')) return;
+      document.getElementById('teams-overlay').classList.remove('active');
+    }
+
+    function renderTeams(agents) {
+      const content = document.getElementById('teams-content');
+      const names = Object.keys(agents);
+      document.getElementById('team-count').textContent = names.length;
+
+      if (names.length === 0) {
+        content.innerHTML = '<div class="team-empty">No agents configured.<br><span style="font-size:12px;margin-top:4px;display:inline-block;">Add agent files to <code>.claude/agents/</code> to define your team.</span></div>';
+        return;
+      }
+
+      content.innerHTML = '<div class="team-grid">' + names.map(name => {
+        const agent = agents[name];
+        const load = agent.current_load || 0;
+        const max = agent.max_active || 3;
+        const loadPct = Math.round(load / Math.max(max, 1) * 100);
+        const loadClass = load === 0 ? 'idle' : (load >= max ? 'full' : 'active');
+        const loadLabel = load === 0 ? 'Idle' : (load >= max ? 'At capacity' : `${load}/${max} active`);
+
+        const skills = (agent.skills || []).map(s => `<span class="team-skill-tag">${s}</span>`).join('');
+        const complexity = (agent.preferred_complexity || []).map(c => `<span class="team-complexity-tag">${c}</span>`).join('');
+
+        const inProgress = (agent.items_in_progress || []);
+        let itemsHtml = '';
+        if (inProgress.length > 0) {
+          const itemsList = inProgress.map(id => {
+            const item = (backlog.items || []).find(i => i.id === id);
+            return `<li>${item ? item.title : id}</li>`;
+          }).join('');
+          itemsHtml = `<div class="team-card-section"><div class="team-card-section-label">Working on</div><ul class="team-card-items">${itemsList}</ul></div>`;
+        }
+
+        return `<div class="team-card">
+          <div class="team-card-header">
+            <span class="team-card-name">${name}</span>
+            <span class="team-card-load ${loadClass}">${loadLabel}</span>
+          </div>
+          <div class="team-card-meta">${skills}${complexity ? '<span style="color:#d1d5db;margin:0 2px;">|</span>' + complexity : ''}</div>
+          ${itemsHtml}
+        </div>`;
+      }).join('') + '</div>';
+    }
+
+    function updateTeamCount() {
+      fetch('/api/agents')
+        .then(r => r.json())
+        .then(data => {
+          const count = Object.keys(data.agents || {}).length;
+          document.getElementById('team-count').textContent = count;
+        })
+        .catch(() => {});
+    }
+
+    // ═══════════════════════════════════════════════
+    // ── Settings Panel ──
+    // ═══════════════════════════════════════════════
+
+    function openSettings() {
+      settingsLanes = statuses.map(s => ({ ...s, requires: [...(s.requires || [])] }));
+      document.getElementById('settings-project-name').value = backlog.config.project_name || '';
+      renderSettingsLanes();
+      settingsAgents = JSON.parse(JSON.stringify(backlog.config.agents || {}));
+      settingsScoring = JSON.parse(JSON.stringify(backlog.config.scoring || {}));
+      renderSettingsAgents();
+      renderSettingsScoring();
+      loadPolicies();
+      document.getElementById('settings-overlay').classList.add('active');
+    }
+
+    function closeSettings(e) {
+      if (e && e.target !== document.getElementById('settings-overlay')) return;
+      document.getElementById('settings-overlay').classList.remove('active');
+      openRequiresDropdown = null;
+    }
+
+    function renderSettingsLanes() {
+      const list = document.getElementById('settings-lane-list');
+      list.innerHTML = settingsLanes.map((lane, i) => {
+        const isFirst = i === 0;
+        const requires = lane.requires || [];
+        const availableForRequires = settingsLanes.filter((l, j) => j !== i && j !== 0 && !requires.includes(l.id));
+
+        // Requires chips HTML
+        const chipsHtml = requires.map(reqId => {
+          const reqLane = settingsLanes.find(l => l.id === reqId);
+          const label = reqLane ? reqLane.label : reqId;
+          return `<span class="requires-chip">${esc(label)}<span class="chip-remove" onclick="removeRequires(${i}, '${escJs(reqId)}')">&times;</span></span>`;
+        }).join('');
+
+        return `
+          <li>
+            <div class="settings-lane ${isFirst ? 'locked' : ''}"
+                draggable="${isFirst ? 'false' : 'true'}"
+                data-lane-idx="${i}"
+                ondragstart="onLaneDragStart(event, ${i})"
+                ondragover="onLaneDragOver(event, ${i})"
+                ondragleave="onLaneDragLeave(event)"
+                ondrop="onLaneDrop(event, ${i})"
+                ondragend="onLaneDragEnd()">
+              ${isFirst
+                ? `<span class="lane-lock-icon" title="Entry point — always first">&#128274;</span>`
+                : `<span class="lane-drag-handle" title="Drag to reorder">&#9776;</span>`
+              }
+              <div class="lane-color-swatch" style="background: ${lane.color};" title="Click to change color">
+                <input type="color" value="${lane.color}"
+                       onchange="updateLaneColor(${i}, this.value)"
+                       oninput="this.parentElement.style.background = this.value">
+              </div>
+              <input type="text" class="lane-label-input" value="${esc(lane.label)}"
+                     ${isFirst ? 'disabled' : ''}
+                     onchange="updateLaneLabel(${i}, this.value)"
+                     placeholder="Lane name...">
+              <span class="lane-id-hint">${lane.id}</span>
+              ${isFirst
+                ? `<span class="lane-lock-icon"></span>`
+                : `<button class="lane-delete-btn" onclick="deleteLane(${i})" title="Remove lane">&times;</button>`
+              }
+            </div>
+            ${!isFirst ? `
+              <div class="lane-requires-row">
+                <span class="lane-requires-label">Requires:</span>
+                ${chipsHtml || '<span style="font-size:10px;color:#d1d5db;">none</span>'}
+                ${availableForRequires.length > 0 ? `
+                  <div class="requires-dropdown" id="requires-dd-${i}">
+                    <button class="requires-add-btn" onclick="toggleRequiresDropdown(${i})">+ gate</button>
+                    ${openRequiresDropdown === i ? `
+                      <div class="requires-dropdown-menu">
+                        ${availableForRequires.map(l => `
+                          <div class="requires-dropdown-item" onclick="addRequires(${i}, '${escJs(l.id)}')">${esc(l.label)}</div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
+          </li>
+        `;
+      }).join('');
+    }
+
+    function toggleRequiresDropdown(idx) {
+      openRequiresDropdown = openRequiresDropdown === idx ? null : idx;
+      renderSettingsLanes();
+    }
+
+    function addRequires(laneIdx, requiredId) {
+      if (!settingsLanes[laneIdx].requires) settingsLanes[laneIdx].requires = [];
+      if (!settingsLanes[laneIdx].requires.includes(requiredId)) {
+        settingsLanes[laneIdx].requires.push(requiredId);
+      }
+      openRequiresDropdown = null;
+      renderSettingsLanes();
+    }
+
+    function removeRequires(laneIdx, requiredId) {
+      if (!settingsLanes[laneIdx].requires) return;
+      settingsLanes[laneIdx].requires = settingsLanes[laneIdx].requires.filter(r => r !== requiredId);
+      renderSettingsLanes();
+    }
+
+    function updateLaneColor(idx, color) {
+      settingsLanes[idx].color = color;
+    }
+
+    function updateLaneLabel(idx, label) {
+      const oldId = settingsLanes[idx].id;
+      const newId = labelToId(label);
+      settingsLanes[idx].label = label;
+      settingsLanes[idx].id = newId;
+      // Update any requires references to the old id
+      settingsLanes.forEach(lane => {
+        if (lane.requires) {
+          lane.requires = lane.requires.map(r => r === oldId ? newId : r);
+        }
+      });
+      renderSettingsLanes();
+    }
+
+    function deleteLane(idx) {
+      if (idx === 0) return;
+      const lane = settingsLanes[idx];
+      const itemCount = backlog.items.filter(i => i.status === lane.id).length;
+      if (itemCount > 0) {
+        if (!confirm(`"${lane.label}" has ${itemCount} item(s). They'll be moved to Backlog. Continue?`)) return;
+      }
+      // Remove this lane from any requires lists
+      const removedId = lane.id;
+      settingsLanes.splice(idx, 1);
+      settingsLanes.forEach(l => {
+        if (l.requires) l.requires = l.requires.filter(r => r !== removedId);
+      });
+      renderSettingsLanes();
+    }
+
+    function addLane() {
+      const input = document.getElementById('new-lane-name');
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      const id = labelToId(name);
+      if (settingsLanes.some(l => l.id === id)) { alert(`A lane with ID "${id}" already exists.`); return; }
+      const colorIdx = settingsLanes.length % COLOR_PALETTE.length;
+      settingsLanes.push({ id, label: name, color: COLOR_PALETTE[colorIdx], requires: [] });
+      input.value = '';
+      renderSettingsLanes();
+    }
+
+    // ── Lane drag-and-drop reordering ──
+    function onLaneDragStart(e, idx) {
+      if (idx === 0) { e.preventDefault(); return; }
+      draggedLaneIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      e.target.style.opacity = '0.4';
+    }
+
+    function onLaneDragOver(e, idx) {
+      e.preventDefault();
+      if (idx === 0 || draggedLaneIdx === null) return;
+      e.dataTransfer.dropEffect = 'move';
+      const el = e.currentTarget;
+      el.classList.add('drag-over-lane');
+    }
+
+    function onLaneDragLeave(e) { e.currentTarget.classList.remove('drag-over-lane'); }
+
+    function onLaneDrop(e, targetIdx) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over-lane');
+      if (targetIdx === 0 || draggedLaneIdx === null || draggedLaneIdx === targetIdx) return;
+      const [moved] = settingsLanes.splice(draggedLaneIdx, 1);
+      settingsLanes.splice(targetIdx, 0, moved);
+      draggedLaneIdx = null;
+      renderSettingsLanes();
+    }
+
+    function onLaneDragEnd() {
+      draggedLaneIdx = null;
+      document.querySelectorAll('.settings-lane').forEach(el => {
+        el.style.opacity = '1';
+        el.classList.remove('drag-over-lane');
+      });
+    }
+
+    function saveSettings() {
+      if (settingsLanes.length < 2) { alert('You need at least 2 lanes.'); return; }
+      for (const lane of settingsLanes) {
+        if (!lane.label.trim() || !lane.id.trim()) { alert('All lanes must have a name.'); return; }
+      }
+      const ids = settingsLanes.map(l => l.id);
+      const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+      if (dupes.length > 0) { alert(`Duplicate lane IDs: ${dupes.join(', ')}`); return; }
+
+      // Validate requires references exist
+      const idSet = new Set(ids);
+      for (const lane of settingsLanes) {
+        if (lane.requires) {
+          const invalid = lane.requires.filter(r => !idSet.has(r));
+          if (invalid.length > 0) {
+            alert(`Lane "${lane.label}" requires non-existent lane(s): ${invalid.join(', ')}`);
+            return;
+          }
+        }
+      }
+
+      // Move orphaned items to backlog
+      const newIds = new Set(ids);
+      const removedStatuses = statuses.filter(s => !newIds.has(s.id)).map(s => s.id);
+      if (removedStatuses.length > 0) {
+        for (const item of backlog.items) {
+          if (removedStatuses.includes(item.status)) {
+            item.status = 'backlog';
+            item.updated_at = new Date().toISOString();
+          }
+        }
+      }
+
+      // Apply
+      backlog.config.project_name = document.getElementById('settings-project-name').value.trim();
+      backlog.config.statuses = settingsLanes.map(l => {
+        const s = { id: l.id, label: l.label, color: l.color };
+        if (l.requires && l.requires.length > 0) s.requires = l.requires;
+        return s;
+      });
+      backlog.config.agents = JSON.parse(JSON.stringify(settingsAgents));
+      if (Object.keys(settingsScoring).length > 0) {
+        backlog.config.scoring = JSON.parse(JSON.stringify(settingsScoring));
+      }
+
+      statuses = getStatuses();
+      populateStatusDropdown();
+
+      const name = backlog.config.project_name;
+      document.getElementById('project-title').textContent =
+        name ? `${name} — Backlog` : 'Backlog Board';
+
+      saveBacklog();
+      renderBoard();
+      closeSettings();
+    }
+
+    // ── Agent Profile Settings ──
+    let settingsAgents = {};
+    let settingsScoring = {};
+
+    let noAgentsBannerDismissed = false;
+
+    function dismissNoAgentsBanner() {
+      noAgentsBannerDismissed = true;
+      const el = document.getElementById('no-agents-banner');
+      if (el) el.remove();
+    }
+
+    function renderSettingsAgents() {
+      const container = document.getElementById('settings-agents-list');
+      const agents = settingsAgents;
+      if (!Object.keys(agents).length) {
+        const bannerHtml = !noAgentsBannerDismissed
+          ? `<div class="info-banner" id="no-agents-banner">
+               <span>No agents configured — assignment intelligence is disabled. Add agents below or edit backlog.json.</span>
+               <button class="banner-dismiss" onclick="dismissNoAgentsBanner()" title="Dismiss">&times;</button>
+             </div>`
+          : '';
+        container.innerHTML = bannerHtml + '<div style="color:#9ca3af;font-size:12px;padding:8px 0;">No agents configured yet.</div>';
+        return;
+      }
+      container.innerHTML = Object.entries(agents).map(([name, profile]) => `
+        <div style="background:#f9fafb;border-radius:8px;padding:10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:13px;">${esc(name)}</strong>
+            <button class="btn btn-ghost btn-sm" onclick="removeAgentProfile('${escJs(name)}')" style="color:#ef4444;font-size:11px;">Remove</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:10px;">Skills (comma-separated)</label>
+              <input type="text" value="${esc((profile.skills||[]).join(', '))}" onchange="settingsAgents['${escJs(name)}'].skills = this.value.split(',').map(s=>s.trim()).filter(Boolean)" style="font-size:12px;padding:4px 6px;">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:10px;">Max Active Tasks</label>
+              <input type="number" value="${profile.max_active || 3}" min="1" max="10" onchange="settingsAgents['${escJs(name)}'].max_active = parseInt(this.value)" style="font-size:12px;padding:4px 6px;">
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function addAgentProfile() {
+      const input = document.getElementById('new-agent-name');
+      const name = input.value.trim();
+      if (!name || settingsAgents[name]) return;
+      settingsAgents[name] = { skills: [], max_active: 3, preferred_complexity: ['low', 'medium', 'high'] };
+      input.value = '';
+      renderSettingsAgents();
+    }
+
+    function removeAgentProfile(name) {
+      delete settingsAgents[name];
+      renderSettingsAgents();
+    }
+
+    function renderSettingsScoring() {
+      const container = document.getElementById('settings-scoring-weights');
+      const defaults = {
+        priority_weight_factor: 1.0, unblock_weight: 2.0, freshness_boost_days: 3,
+        freshness_decay_days: 14, freshness_decay_factor: 0.5, blocked_penalty: -3.0,
+        quick_win_bonus: 1.0, reopen_penalty_per: -0.5, skip_floor_per: 0.3,
+        position_weight: 0.5, critical_bug_boost: 5.0
+      };
+      const labels = {
+        priority_weight_factor: 'Priority Factor', unblock_weight: 'Unblock Weight',
+        freshness_boost_days: 'Freshness Boost (days)', freshness_decay_days: 'Staleness Threshold (days)',
+        freshness_decay_factor: 'Staleness Factor', blocked_penalty: 'Blocked Penalty',
+        quick_win_bonus: 'Quick Win Bonus', reopen_penalty_per: 'Reopen Penalty',
+        skip_floor_per: 'Skip Floor (per skip)', position_weight: 'Position Weight',
+        critical_bug_boost: 'Critical Bug Boost'
+      };
+      container.innerHTML = Object.entries(labels).map(([key, label]) => {
+        const val = settingsScoring[key] != null ? settingsScoring[key] : defaults[key];
+        return `<div class="form-group" style="margin:0;">
+          <label style="font-size:10px;">${label}</label>
+          <input type="number" step="0.1" value="${val}" onchange="settingsScoring['${key}'] = parseFloat(this.value)" style="font-size:12px;padding:4px 6px;">
+        </div>`;
+      }).join('');
+    }
+
+    // ── Phase 4: Policy Engine UI ──
+    // ═══════════════════════════════════════════════
+
+    let policiesData = { policies: [] };
+
+    async function loadPolicies() {
+      try {
+        const r = await fetch('/api/policies');
+        if (r.ok) policiesData = await r.json();
+        renderSettingsPolicies();
+      } catch (_) {}
+    }
+
+    function renderSettingsPolicies() {
+      const container = document.getElementById('settings-policy-list');
+      if (!container) return;
+      const policies = policiesData.policies || [];
+      if (!policies.length) {
+        container.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:4px 0 8px;">No policies yet — add one below or click "Suggest Rules".</div>';
+        return;
+      }
+      container.innerHTML = policies.map(p => {
+        const isOn = p.active !== false;
+        const stale = (p.staleness_warnings || []).length > 0;
+        const hasFires = (p.fire_count || 0) > 0;
+        const lastFired = p.last_fired ? new Date(p.last_fired).toLocaleDateString() : 'Never';
+        const isStructured = !!p.conditions;
+        const staleHtml = stale
+          ? `<div class="policy-stale-warning">⚠ ${p.staleness_warnings.join(' · ')}</div>`
+          : '';
+        const modeBadge = isStructured
+          ? `<span title="Evaluated without API key" style="font-size:10px;color:#059669;background:#d1fae5;padding:2px 6px;border-radius:4px;">structured</span>`
+          : `<span title="Needs ANTHROPIC_API_KEY to fire — stored but won't evaluate without it" style="font-size:10px;color:#9ca3af;background:#f3f4f6;padding:2px 6px;border-radius:4px;">llm</span>`;
+        return `
+          <div class="policy-item${isOn ? '' : ' inactive'}${stale ? ' stale' : ''}" data-policy-id="${esc(p.id)}">
+            <div class="policy-item-header">
+              <button class="policy-toggle${isOn ? ' on' : ''}" title="${isOn ? 'Disable' : 'Enable'}"
+                onclick="togglePolicy('${escJs(p.id)}', ${!isOn})"></button>
+              <span class="policy-name">${esc(p.name)}</span>
+              <span class="policy-priority">p${p.priority || 5}</span>
+              ${modeBadge}
+              <span class="policy-fire-badge${hasFires ? ' has-fires' : ''}">
+                ${hasFires ? '⚡ ' + p.fire_count + ' fire' + (p.fire_count !== 1 ? 's' : '') : '0 fires'} · ${lastFired}
+              </span>
+            </div>
+            <div class="policy-description">${esc(p.description)}</div>
+            ${staleHtml}
+            <div class="policy-actions-row">
+              <button class="policy-btn danger" onclick="deletePolicy('${escJs(p.id)}')">Delete</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function togglePolicy(policyId, newActive) {
+      try {
+        await fetch(`/api/policies/${policyId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: newActive })
+        });
+        await loadPolicies();
+      } catch (_) {}
+    }
+
+    async function deletePolicy(policyId) {
+      if (!confirm('Delete this policy?')) return;
+      try {
+        await fetch(`/api/policies/${policyId}`, { method: 'DELETE' });
+        await loadPolicies();
+      } catch (_) {}
+    }
+
+    function showPolicyAddForm() {
+      document.getElementById('policy-add-form').style.display = 'block';
+      document.getElementById('new-policy-name').focus();
+    }
+
+    function hidePolicyAddForm() {
+      document.getElementById('policy-add-form').style.display = 'none';
+      document.getElementById('new-policy-name').value = '';
+      document.getElementById('new-policy-desc').value = '';
+      document.getElementById('new-policy-priority').value = '5';
+    }
+
+    async function createPolicy() {
+      const name = document.getElementById('new-policy-name').value.trim();
+      const description = document.getElementById('new-policy-desc').value.trim();
+      const priority = parseInt(document.getElementById('new-policy-priority').value) || 5;
+      if (!name || !description) { alert('Name and description are required.'); return; }
+      try {
+        const r = await fetch('/api/policies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description, priority, active: true })
+        });
+        if (r.ok) {
+          hidePolicyAddForm();
+          await loadPolicies();
+        } else {
+          const err = await r.json();
+          alert('Error: ' + (err.error || 'Unknown'));
+        }
+      } catch (_) {}
+    }
+
+    async function loadPolicySuggestions() {
+      const btn = document.querySelector('button[onclick="loadPolicySuggestions()"]');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
+      const suggestionsDiv = document.getElementById('policy-suggestions');
+      const listDiv = document.getElementById('policy-suggestions-list');
+      suggestionsDiv.style.display = 'none';
+      try {
+        const r = await fetch('/api/policies/suggestions');
+        if (r.ok) {
+          const data = await r.json();
+          const suggestions = data.suggestions || [];
+          if (!suggestions.length) {
+            listDiv.innerHTML = '<p style="font-size:12px;color:#9ca3af;">No new suggestions — existing policies look comprehensive.</p>';
+          } else {
+            listDiv.innerHTML = suggestions.map((s, i) => `
+              <div class="suggestion-item" data-idx="${i}">
+                <button class="suggestion-add-btn" onclick="addSuggestion(${i})">+ Add</button>
+                <div class="suggestion-name">${esc(s.name)}</div>
+                <div class="suggestion-desc">${esc(s.description)}</div>
+              </div>
+            `).join('');
+            listDiv._suggestions = suggestions;
+          }
+          suggestionsDiv.style.display = 'block';
+        }
+      } catch (_) {
+        listDiv.innerHTML = '<p style="font-size:12px;color:#ef4444;">Suggestions require ANTHROPIC_API_KEY.</p>';
+        suggestionsDiv.style.display = 'block';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = '✦ Suggest Rules'; }
+    }
+
+    async function addSuggestion(idx) {
+      const listDiv = document.getElementById('policy-suggestions-list');
+      const suggestions = listDiv._suggestions || [];
+      const s = suggestions[idx];
+      if (!s) return;
+      try {
+        await fetch('/api/policies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: s.name, description: s.description, priority: s.priority || 5, active: true })
+        });
+        await loadPolicies();
+        // Remove the suggestion from the list
+        suggestions.splice(idx, 1);
+        listDiv._suggestions = suggestions;
+        if (!suggestions.length) {
+          document.getElementById('policy-suggestions').style.display = 'none';
+        } else {
+          listDiv.querySelectorAll('.suggestion-item')[idx]?.remove();
+        }
+      } catch (_) {}
+    }
+
+    async function openPolicyLog() {
+      document.getElementById('policy-log-overlay').classList.add('active');
+      const body = document.getElementById('policy-log-body');
+      body.innerHTML = '<p style="color:#9ca3af;font-size:13px;">Loading…</p>';
+      try {
+        const r = await fetch('/api/policies/log?limit=50');
+        if (r.ok) {
+          const data = await r.json();
+          const entries = data.entries || [];
+          if (!entries.length) {
+            body.innerHTML = '<p style="color:#9ca3af;font-size:13px;">No policy fires recorded yet.</p>';
+          } else {
+            body.innerHTML = entries.map(e => {
+              const ts = new Date(e.timestamp).toLocaleString();
+              const firedClass = e.fired ? 'fired' : '';
+              const conflictClass = e.conflict_with ? 'conflict' : '';
+              const actionsHtml = (e.actions_executed || []).length
+                ? `<div style="margin-top:3px;color:#374151;">Actions: ${e.actions_executed.map(a => `${a.action.type} ${a.action.item_id || ''}`).join(', ')}</div>`
+                : '';
+              const notifHtml = (e.notifications || []).length
+                ? `<div style="margin-top:3px;color:#6b7280;">Notify: ${e.notifications.join('; ')}</div>`
+                : '';
+              const conflictNote = e.conflict_with
+                ? `<div style="color:#d97706;font-size:10px;margin-top:2px;">Conflict with: ${e.conflict_with.join(', ')} — ${e.resolution_reasoning || ''}</div>`
+                : '';
+              return `<div class="policy-log-entry ${firedClass} ${conflictClass}">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <strong style="font-size:12px;">${esc(e.policy_name)}</strong>
+                  <span style="font-size:10px;color:#9ca3af;">${ts}</span>
+                </div>
+                <div style="color:${e.fired ? '#059669' : '#9ca3af'};font-size:11px;">${e.fired ? '⚡ Fired' : '○ Did not fire'} — ${esc(e.reasoning || '')}</div>
+                ${actionsHtml}${notifHtml}${conflictNote}
+              </div>`;
+            }).join('');
+          }
+        }
+      } catch (_) {
+        body.innerHTML = '<p style="color:#ef4444;font-size:13px;">Error loading policy log.</p>';
+      }
+    }
+
+    function closePolicyLog(e) {
+      if (e && e.target !== document.getElementById('policy-log-overlay')) return;
+      document.getElementById('policy-log-overlay').classList.remove('active');
+    }
+
+    // ── Search & Filters ──
+    function onSearch(value) {
+      searchQuery = value.trim();
+      const input = document.getElementById('search-input');
+      input.classList.toggle('has-value', searchQuery.length > 0);
+      applyFilters();
+    }
+
+    function toggleAssigneeDd() {
+      assigneeDdOpen = !assigneeDdOpen;
+      document.getElementById('assignee-dd-menu').classList.toggle('open', assigneeDdOpen);
+    }
+
+    function toggleAssignee(name, isAll) {
+      if (isAll) {
+        selectedAssignees.clear();
+      } else {
+        if (selectedAssignees.has(name)) selectedAssignees.delete(name);
+        else selectedAssignees.add(name);
+      }
+      updateAssigneeTrigger();
+      renderAssigneeMenu();
+      applyFilters();
+    }
+
+    function updateAssigneeTrigger() {
+      const trigger = document.getElementById('assignee-dd-trigger');
+      const count = selectedAssignees.size;
+      if (count === 0) {
+        trigger.textContent = 'Assignee';
+        trigger.classList.remove('has-value');
+      } else if (count === 1) {
+        trigger.textContent = [...selectedAssignees][0];
+        trigger.classList.add('has-value');
+      } else {
+        trigger.textContent = `${count} assignees`;
+        trigger.classList.add('has-value');
+      }
+    }
+
+    function populateAssigneeDropdown() {
+      const assignees = [...new Set(
+        backlog.items.map(i => i.assigned_to).filter(a => a && a.trim())
+      )].sort();
+
+      // Remove any selected assignees that no longer exist
+      for (const a of [...selectedAssignees]) {
+        if (!assignees.includes(a)) selectedAssignees.delete(a);
+      }
+
+      renderAssigneeMenu();
+      updateAssigneeTrigger();
+    }
+
+    function renderAssigneeMenu() {
+      const assignees = [...new Set(
+        backlog.items.map(i => i.assigned_to).filter(a => a && a.trim())
+      )].sort();
+
+      const menu = document.getElementById('assignee-dd-menu');
+      if (assignees.length === 0) {
+        menu.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:#9ca3af;">No assignments yet</div>';
+        return;
+      }
+
+      const allChecked = selectedAssignees.size === 0;
+      menu.innerHTML = `
+        <div class="assignee-dd-item is-all" onclick="toggleAssignee(null, true)">
+          <input type="checkbox" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();toggleAssignee(null,true)"> All
+        </div>
+        ${assignees.map(a => {
+          const checked = selectedAssignees.has(a);
+          return `<div class="assignee-dd-item" onclick="toggleAssignee('${escJs(a)}', false)">
+            <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation();toggleAssignee('${escJs(a)}',false)">
+            ${esc(a)}
+          </div>`;
+        }).join('')}
+      `;
+    }
+
+    function matchesFilters(item) {
+      if (selectedAssignees.size > 0 && !selectedAssignees.has(item.assigned_to)) return false;
+      if (!searchQuery) return true;
+      if (searchQuery.startsWith('#')) {
+        const num = parseInt(searchQuery.slice(1), 10);
+        if (!isNaN(num)) return backlog.items.indexOf(item) + 1 === num;
+      }
+      if (/^\d+$/.test(searchQuery)) {
+        const num = parseInt(searchQuery, 10);
+        if (!isNaN(num) && num >= 1 && num <= backlog.items.length) {
+          return backlog.items.indexOf(item) + 1 === num;
+        }
+      }
+      return item.title.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+
+    function toggleSortMode() {
+      sortByScore = !sortByScore;
+      document.getElementById('sort-toggle').textContent = sortByScore ? 'Sort: Score' : 'Sort: Position';
+      document.getElementById('sort-toggle').classList.toggle('active', sortByScore);
+      renderBoard();
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const isFiltering = searchQuery || selectedAssignees.size > 0;
+      document.querySelectorAll('.card[data-id]').forEach(card => {
+        const item = backlog.items.find(i => i.id === card.dataset.id);
+        card.classList.toggle('search-hidden', item ? !matchesFilters(item) : false);
+      });
+      // Update column counts to reflect visible items
+      document.querySelectorAll('.column').forEach(col => {
+        const statusId = col.dataset.status;
+        const total = backlog.items.filter(i => i.status === statusId).length;
+        const visible = isFiltering
+          ? backlog.items.filter(i => i.status === statusId && matchesFilters(i)).length
+          : total;
+        const countEl = col.querySelector('.count');
+        if (countEl) countEl.textContent = isFiltering ? `${visible}/${total}` : total;
+      });
+      // When the graph view is active, re-render the diagram so search/assignee
+      // filters narrow the visible nodes. _graphFitted stays true so the viewport
+      // (zoom/pan) is preserved — no jarring reset to scale:1.
+      if (viewMode === 'graph' && graphData) {
+        renderGraphDiagram();
+      }
+    }
+
+    // ── Discard helpers ──
+    function toggleDiscardedColumn() {
+      discardedCollapsed = !discardedCollapsed;
+      renderBoard();
+    }
+
+    function restoreItem(itemId) {
+      const item = backlog.items.find(i => i.id === itemId);
+      if (!item) return;
+      item._moved_by = currentUser.name;
+      item.status = 'backlog';
+      item.updated_at = new Date().toISOString();
+      saveBacklog();
+      renderBoard();
+    }
+
+    // ── User identity ──
+    async function loadUser() {
+      try {
+        const res = await fetch('/api/user');
+        currentUser = await res.json();
+        const display = document.getElementById('user-display');
+        if (currentUser.name && currentUser.name !== 'unknown') {
+          display.textContent = currentUser.name;
+          display.title = currentUser.email
+            ? `Git user: ${currentUser.name} <${currentUser.email}>`
+            : `Git user: ${currentUser.name}`;
+        } else {
+          display.style.display = 'none';
+        }
+      } catch (e) {
+        document.getElementById('user-display').style.display = 'none';
+      }
+    }
+
+    // ── Utils ──
+    function genId() { return Math.random().toString(36).substring(2, 10); }
+    function esc(str) { const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+    function escJs(str) { return (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+    function sanitizeUrl(url) {
+      return (typeof url === 'string' && /^https?:\/\//i.test(url.trim())) ? url : '';
+    }
+    function refreshBoard() { loadBacklog(); }
+
+    // ── Phase 3: View mode toggle ──────────────────────────────────────────────
+
+    function setViewMode(mode) {
+      viewMode = mode;
+      const board = document.getElementById('board');
+      const graphView = document.getElementById('graph-view');
+      const btnKanban = document.getElementById('view-btn-kanban');
+      const btnGraph = document.getElementById('view-btn-graph');
+      if (mode === 'graph') {
+        board.style.display = 'none';
+        graphView.classList.add('active');
+        btnKanban.classList.remove('active');
+        btnGraph.classList.add('active');
+        renderGraphView();
+      } else {
+        board.style.display = '';
+        graphView.classList.remove('active');
+        btnKanban.classList.add('active');
+        btnGraph.classList.remove('active');
+        _graphFitted = false;
+      }
+    }
+
+    function updateConflictBadge() {
+      const btn = document.getElementById('conflict-badge-btn');
+      const count = document.getElementById('conflict-count-badge');
+      const plural = document.getElementById('conflict-plural');
+      if (!graphData) { btn.classList.remove('has-conflicts'); return; }
+      const n = (graphData.conflicts || []).length;
+      if (n > 0) {
+        count.textContent = n;
+        plural.textContent = n === 1 ? '' : 's';
+        btn.classList.add('has-conflicts');
+      } else {
+        btn.classList.remove('has-conflicts');
+      }
+    }
+
+    // Open an item modal from the graph view by item ID
+    function openItemById(itemId) {
+      openEditModal(itemId);
+    }
+
+    // Escape text for SVG content
+    function escSvg(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── Phase 3: Graph rendering ───────────────────────────────────────────────
+
+    function renderGraphView() {
+      if (!graphData) return;
+      renderGraphSidebar();
+      renderGraphDiagram();
+    }
+
+    function renderGraphSidebar() {
+      const sidebar = document.getElementById('graph-sidebar');
+      const agents = graphData ? (graphData.rebalancing || []) : [];
+      const conflicts = graphData ? (graphData.conflicts || []) : [];
+      const rebalancing = graphData ? (graphData.rebalancing || []) : [];
+
+      // Agent activity panel — pull from backlog.config.agents
+      const agentsCfg = (backlog.config && backlog.config.agents) || {};
+      const agentNames = Object.keys(agentsCfg);
+      let agentHtml = '<div class="graph-panel-body">';
+      if (!agentNames.length) {
+        agentHtml += '<div style="color:#9ca3af;font-size:12px;">No agents configured. Add agents in Settings.</div>';
+      } else {
+        agentNames.forEach(aname => {
+          const profile = agentsCfg[aname];
+          const maxActive = profile.max_active || 3;
+          const inProgressCount = backlog.items.filter(i => i.assigned_to === aname && i.status === 'in-progress').length;
+          const loadPct = Math.round(inProgressCount / Math.max(maxActive, 1) * 100);
+          const dotClass = inProgressCount === 0 ? 'idle' : inProgressCount >= maxActive ? 'overloaded' : 'active';
+          const barColor = dotClass === 'overloaded' ? '#ef4444' : dotClass === 'active' ? '#22c55e' : '#d1d5db';
+          const inProgItems = backlog.items.filter(i => i.assigned_to === aname && i.status === 'in-progress');
+          const itemsList = inProgItems.length
+            ? `<div style="font-size:10px;color:#9ca3af;padding-top:3px;padding-left:16px;">${inProgItems.map(i => esc(i.title)).join(', ')}</div>`
+            : '';
+          agentHtml += `
+            <div class="agent-row" style="flex-wrap:wrap;">
+              <span class="agent-dot ${dotClass}"></span>
+              <span class="agent-name">${esc(aname)}</span>
+              <div class="agent-load-bar-wrap"><div class="agent-load-bar" style="width:${Math.min(loadPct,100)}%;background:${barColor};"></div></div>
+              <span class="agent-load-label">${inProgressCount}/${maxActive}</span>
+              ${itemsList ? `<div style="width:100%;">${itemsList}</div>` : ''}
+            </div>`;
+        });
+      }
+      agentHtml += '</div>';
+
+      // Conflict panel
+      let conflictHtml = '<div class="graph-panel-body">';
+      if (!conflicts.length) {
+        conflictHtml += '<div style="color:#9ca3af;font-size:12px;">No conflicts detected.</div>';
+      } else {
+        conflicts.forEach(c => {
+          conflictHtml += `<div class="conflict-item"><strong>⚡ Tag overlap:</strong> ${esc(c.description)}<br><span style="color:#a16207;">Tags: ${esc((c.shared_tags||[]).join(', '))}</span></div>`;
+        });
+      }
+      conflictHtml += '</div>';
+
+      // Rebalancing panel
+      let rebalHtml = '<div class="graph-panel-body">';
+      const rebalItems = (graphData.rebalancing || []);
+      if (!rebalItems.length) {
+        rebalHtml += '<div style="color:#9ca3af;font-size:12px;">Load is balanced.</div>';
+      } else {
+        rebalItems.forEach(r => {
+          rebalHtml += `<div class="rebalance-item">↔ ${esc(r.description)}</div>`;
+        });
+      }
+      rebalHtml += '</div>';
+
+      // Startable items panel — items at ≥70% readiness not yet started
+      const startable = (graphData.nodes || []).filter(n =>
+        n.readiness >= 0.70 && n.status !== 'done' && n.status !== 'discarded' && n.status !== 'in-progress'
+      ).slice(0, 5);
+      let startableHtml = '<div class="graph-panel-body">';
+      if (!startable.length) {
+        startableHtml += '<div style="color:#9ca3af;font-size:12px;">No items are currently startable.</div>';
+      } else {
+        startable.forEach(n => {
+          const pct = Math.round(n.readiness * 100);
+          const lbl = n.readiness_level === 'ready' ? 'ready' : 'startable with risk';
+          startableHtml += `<div class="startable-item" style="cursor:pointer;" onclick="openItemById('${escJs(n.id)}')">
+            <strong>${esc(n.title)}</strong>
+            <span style="float:right;opacity:0.7;">${pct}% ${lbl}</span>
+          </div>`;
+        });
+      }
+      startableHtml += '</div>';
+
+      sidebar.innerHTML = `
+        <div class="graph-panel">
+          <div class="graph-panel-header">Agent Activity</div>
+          ${agentHtml}
+        </div>
+        <div class="graph-panel">
+          <div class="graph-panel-header" style="${conflicts.length ? 'color:#92400e;' : ''}">
+            Conflicts ${conflicts.length ? `<span style="background:#f59e0b;color:#fff;border-radius:9999px;padding:1px 7px;font-size:10px;">${conflicts.length}</span>` : ''}
+          </div>
+          ${conflictHtml}
+        </div>
+        <div class="graph-panel">
+          <div class="graph-panel-header">Workload</div>
+          ${rebalHtml}
+        </div>
+        <div class="graph-panel">
+          <div class="graph-panel-header">Startable Now</div>
+          ${startableHtml}
+        </div>`;
+    }
+
+    function renderGraphDiagram() {
+      const content = document.getElementById('graph-content');
+      const nodes = (graphData && graphData.nodes) || [];
+      const edges = (graphData && graphData.edges) || [];
+      const criticalPath = new Set((graphData && graphData.critical_path) || []);
+      const conflictItems = new Set((graphData && graphData.conflicts || []).flatMap(c => c.items));
+
+      // Show items with blocks links, on critical path, or involved in conflicts
+      const linkedIds = new Set(edges.flatMap(e => [e.source, e.target]));
+      const relevant = nodes.filter(n => linkedIds.has(n.id) || criticalPath.has(n.id) || conflictItems.has(n.id));
+
+      if (!relevant.length) {
+        content.innerHTML = `<div class="graph-empty">
+          <div style="font-size:24px;margin-bottom:8px;">🔗</div>
+          <div style="font-weight:500;color:#374151;margin-bottom:4px;">No dependency links or conflicts yet</div>
+          <div>Add "blocks" links between items to see the dependency graph here.</div>
+        </div>`;
+        return;
+      }
+
+      // Apply search/assignee filters to graph nodes — reuse matchesFilters so
+      // search text, #N/bare-N lookup, and assignee filter all work consistently.
+      const isFiltering = searchQuery || selectedAssignees.size > 0;
+      const visibleNodes = isFiltering
+        ? relevant.filter(n => {
+            const item = backlog.items.find(i => i.id === n.id);
+            return item ? matchesFilters(item) : false;
+          })
+        : relevant;
+
+      const visibleIds = new Set(visibleNodes.map(n => n.id));
+
+      if (isFiltering && visibleNodes.length === 0) {
+        content.innerHTML = `<div class="graph-empty">
+          <div style="font-size:24px;margin-bottom:8px;">🔍</div>
+          <div style="font-weight:500;color:#374151;margin-bottom:4px;">No matching nodes</div>
+          <div>Clear the search or filter to see the full graph.</div>
+        </div>`;
+        return;
+      }
+
+      // Build adjacency for topological layering (blockers → top, blocked → bottom)
+      // Only include edges where both endpoints are visible (no dangling arrows).
+      const blockEdges = edges.filter(e => e.type === 'blocks' && visibleIds.has(e.source) && visibleIds.has(e.target));
+      const blockerOf = {};   // id → [ids it blocks]
+      const blockedByCount = {};
+      visibleNodes.forEach(n => { blockedByCount[n.id] = 0; blockerOf[n.id] = []; });
+      blockEdges.forEach(e => {
+        if (blockerOf[e.source] !== undefined) blockerOf[e.source].push(e.target);
+        if (blockedByCount[e.target] !== undefined) blockedByCount[e.target]++;
+      });
+
+      // Kahn's algorithm for layer assignment
+      const layers = {};
+      const queue = visibleNodes.filter(n => blockedByCount[n.id] === 0).map(n => n.id);
+      const inDeg = { ...blockedByCount };
+      let layer = 0;
+      const processed = new Set();
+      while (queue.length) {
+        const batch = [...queue]; queue.length = 0;
+        batch.forEach(id => {
+          if (processed.has(id)) return;
+          processed.add(id);
+          layers[id] = layer;
+          (blockerOf[id] || []).forEach(nid => {
+            if (inDeg[nid] !== undefined) {
+              inDeg[nid]--;
+              if (inDeg[nid] === 0) queue.push(nid);
+            }
+          });
+        });
+        layer++;
+      }
+      // Any unprocessed (cycles) go to last layer
+      visibleNodes.forEach(n => { if (layers[n.id] === undefined) layers[n.id] = layer; });
+
+      // Group by layer
+      const byLayer = {};
+      visibleNodes.forEach(n => {
+        const l = layers[n.id] || 0;
+        (byLayer[l] = byLayer[l] || []).push(n);
+      });
+
+      const NW = 180, NH = 60, HGAP = 16, VGAP = 48, PAD = 24;
+      const MAX_PER_ROW = 6;
+
+      // Split wide layers into wrapped sub-rows so the graph doesn't become a single long line
+      const posRows = [];
+      Object.keys(byLayer).sort((a, b) => a - b).forEach(l => {
+        const layerNodes = byLayer[l];
+        for (let i = 0; i < layerNodes.length; i += MAX_PER_ROW) {
+          posRows.push(layerNodes.slice(i, i + MAX_PER_ROW));
+        }
+      });
+
+      const maxRowW = Math.max(...posRows.map(row => row.length * (NW + HGAP) - HGAP));
+      const positions = {};
+      posRows.forEach((row, rowIdx) => {
+        const rowW = row.length * (NW + HGAP) - HGAP;
+        const offset = (maxRowW - rowW) / 2;
+        row.forEach((n, i) => {
+          positions[n.id] = { x: i * (NW + HGAP) + offset, y: rowIdx * (NH + VGAP) };
+        });
+      });
+
+      const totalW = maxRowW + PAD * 2;
+      const totalH = posRows.length * (NH + VGAP) + PAD * 2;
+
+      const statusColors = {
+        'done': '#8b5cf6', 'in-progress': '#3b82f6', 'code-review': '#ec4899',
+        'ready': '#10b981', 'refined': '#f59e0b', 'backlog': '#94a3b8', 'discarded': '#cbd5e1'
+      };
+
+      let svgEdges = '';
+      let svgNodes = '';
+
+      // Draw block edges
+      blockEdges.forEach(e => {
+        const from = positions[e.source], to = positions[e.target];
+        if (!from || !to) return;
+        const x1 = from.x + NW / 2 + PAD, y1 = from.y + NH + PAD;
+        const x2 = to.x + NW / 2 + PAD, y2 = to.y + PAD;
+        const cy = (y1 + y2) / 2;
+        const isCPEdge = criticalPath.has(e.source) && criticalPath.has(e.target);
+        svgEdges += `<path d="M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}"
+          fill="none" stroke="${isCPEdge ? '#ef4444' : '#d1d5db'}" stroke-width="${isCPEdge ? 2 : 1.5}"
+          marker-end="url(#arrow${isCPEdge ? 'Red' : ''})" opacity="${isCPEdge ? 1 : 0.7}"/>`;
+      });
+
+      // Draw other edges (dashed) — only between visible nodes
+      edges.filter(e => e.type !== 'blocks' && visibleIds.has(e.source) && visibleIds.has(e.target)).forEach(e => {
+        const from = positions[e.source], to = positions[e.target];
+        if (!from || !to) return;
+        const x1 = from.x + NW / 2 + PAD, y1 = from.y + NH / 2 + PAD;
+        const x2 = to.x + NW / 2 + PAD, y2 = to.y + NH / 2 + PAD;
+        svgEdges += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+          stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,3"/>`;
+      });
+
+      // Draw conflict edges (dashed amber — items competing for same resources)
+      // Only draw between nodes that are both visible after filtering.
+      (graphData.conflicts || []).forEach(c => {
+        const items = c.items || [];
+        for (let i = 0; i < items.length; i++) {
+          if (!visibleIds.has(items[i])) continue;
+          for (let j = i + 1; j < items.length; j++) {
+            if (!visibleIds.has(items[j])) continue;
+            const from = positions[items[i]], to = positions[items[j]];
+            if (!from || !to) continue;
+            const x1 = from.x + NW / 2 + PAD, y1 = from.y + NH / 2 + PAD;
+            const x2 = to.x + NW / 2 + PAD, y2 = to.y + NH / 2 + PAD;
+            svgEdges += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+              stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/>`;
+          }
+        }
+      });
+
+      // Build a lookup from item id → display number (#N) for graph node labels.
+      const itemPosMap = {};
+      (backlog.items || []).forEach((item, idx) => { itemPosMap[item.id] = idx + 1; });
+
+      // Draw nodes
+      visibleNodes.forEach(n => {
+        const pos = positions[n.id];
+        if (!pos) return;
+        const px = pos.x + PAD, py = pos.y + PAD;
+        const isCP = criticalPath.has(n.id);
+        const isConflict = conflictItems.has(n.id);
+        const nodeColor = statusColors[n.status] || '#94a3b8';
+        const bgColor = isCP ? '#fef2f2' : isConflict ? '#fffbeb' : '#fff';
+        const borderColor = isCP ? '#ef4444' : isConflict ? '#f59e0b' : nodeColor;
+        const borderW = (isCP || isConflict) ? 2 : 1.5;
+        const readinessBarColor = n.readiness >= 0.9 ? '#22c55e' : n.readiness >= 0.7 ? '#f59e0b' : '#d1d5db';
+        const barW = Math.round((NW - 20) * n.readiness);
+        // Reserve space on the right for the #N badge (≈32px) so the title never overlaps it.
+        const titleShort = n.title.length > 16 ? n.title.slice(0, 16) + '…' : n.title;
+        const assignedShort = n.assigned_to ? n.assigned_to.slice(0, 14) : '';
+        const cascadeLabel = n.cascade_count > 0 ? ` · ↓${n.cascade_count}` : '';
+        const cpIndicator = isCP ? `<rect x="${px}" y="${py}" width="4" height="${NH}" rx="2" fill="#ef4444"/>` : '';
+        const conflictIndicator = isConflict && !isCP ? `<rect x="${px}" y="${py}" width="4" height="${NH}" rx="2" fill="#f59e0b"/>` : '';
+        // Item number badge — top-right corner (replaces the plain color circle)
+        const itemNum = itemPosMap[n.id];
+        const numLabel = itemNum != null ? `#${itemNum}` : '';
+
+        // #N badge: pill in the node color at top-right, white text on colored background.
+        const badgeW = numLabel.length <= 3 ? 24 : numLabel.length <= 4 ? 30 : 36;
+        const badgeX = px + NW - badgeW - 6;
+        const badgeY = py + 4;
+        const numBadge = numLabel ? `
+            <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="14" rx="7" fill="${nodeColor}" opacity="0.85"/>
+            <text x="${badgeX + badgeW / 2}" y="${badgeY + 10}" font-family="-apple-system,sans-serif" font-size="9" fill="#fff" font-weight="700" text-anchor="middle">${escSvg(numLabel)}</text>` : '';
+
+        svgNodes += `
+          <g onclick="openItemById('${escJs(n.id)}')" style="cursor:pointer;" title="${escSvg(n.title)}">
+            <rect x="${px}" y="${py}" width="${NW}" height="${NH}" rx="8"
+              fill="${bgColor}" stroke="${borderColor}" stroke-width="${borderW}"/>
+            ${cpIndicator}${conflictIndicator}
+            ${numBadge}
+            <text x="${px + 10}" y="${py + 19}" font-family="-apple-system,sans-serif" font-size="11.5" fill="#111827" font-weight="500">${escSvg(titleShort)}</text>
+            <text x="${px + 10}" y="${py + 34}" font-family="-apple-system,sans-serif" font-size="10" fill="#9ca3af">${escSvg(n.status)}${assignedShort ? ' · ' + escSvg(assignedShort) : ''}${cascadeLabel}</text>
+            <rect x="${px + 10}" y="${py + 46}" width="${NW - 20}" height="3" rx="1.5" fill="#f3f4f6"/>
+            <rect x="${px + 10}" y="${py + 46}" width="${barW}" height="3" rx="1.5" fill="${readinessBarColor}"/>
+          </g>`;
+      });
+
+      const svgW = Math.max(totalW, 400);
+      const svgH = Math.max(totalH, 200);
+
+      const isFirstRender = !_graphFitted;
+      // Preserve the current viewport transform across poll re-renders.
+      // Only reset to defaults on the very first render (or after an explicit
+      // switch-away that resets _graphFitted to false).
+      // Never clobber an in-progress user drag — keep existing tx/ty/scale.
+      if (isFirstRender) {
+        _graphZoom = { scale: 1, tx: 0, ty: 0, dragging: false, hasDragged: false, startX: 0, startY: 0, startTx: 0, startTy: 0 };
+      } else {
+        // Rebuild only the interaction bookkeeping; leave scale/tx/ty intact.
+        _graphZoom.hasDragged = false;
+        _graphZoom.startX = 0; _graphZoom.startY = 0;
+        _graphZoom.startTx = _graphZoom.tx; _graphZoom.startTy = _graphZoom.ty;
+        // If a drag was in progress when the poll landed, cancel it cleanly.
+        if (_graphZoom.dragging) {
+          _graphZoom.dragging = false;
+          const vpDrag = document.getElementById('graph-viewport');
+          if (vpDrag) vpDrag.classList.remove('dragging');
+        }
+      }
+
+      // Build node-status legend items derived from statusColors (single source of truth).
+      // Display order: in-progress, code-review, ready, refined, backlog, done, discarded.
+      const statusLegendOrder = ['in-progress', 'code-review', 'ready', 'refined', 'backlog', 'done', 'discarded'];
+      const statusLegendLabels = {
+        'in-progress': 'In progress', 'code-review': 'Code review', 'ready': 'Ready',
+        'refined': 'Refined', 'backlog': 'Backlog / other', 'done': 'Done', 'discarded': 'Discarded'
+      };
+      const nodeLegendItems = statusLegendOrder
+        .filter(s => statusColors[s])
+        .map(s => `<div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColors[s]};vertical-align:middle;"></span> ${statusLegendLabels[s] || s}</div>`)
+        .join('');
+
+      content.innerHTML = `
+        <div class="graph-header">
+          <div class="graph-legend">
+            <span class="legend-section-label">Node status:</span>
+            ${nodeLegendItems}
+            <span class="legend-section-label" style="margin-left:8px;">Node border:</span>
+            <div class="legend-item"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#fef2f2;border:2px solid #ef4444;"></span>Critical path</div>
+            <div class="legend-item"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#fffbeb;border:2px solid #f59e0b;"></span>Conflict</div>
+            <span class="legend-section-label" style="margin-left:8px;">Edges:</span>
+            <div class="legend-item"><div style="width:24px;height:2px;background:#ef4444;display:inline-block;vertical-align:middle;"></div> Blocks (critical)</div>
+            <div class="legend-item"><div style="width:24px;height:2px;background:#d1d5db;display:inline-block;vertical-align:middle;"></div> Blocks</div>
+            <div class="legend-item"><div style="width:24px;height:1px;border-top:1px dashed #cbd5e1;display:inline-block;vertical-align:middle;"></div> Related</div>
+            <div class="legend-item"><div style="width:24px;height:1px;border-top:2px dashed #f59e0b;display:inline-block;vertical-align:middle;"></div> Conflict</div>
+          </div>
+          <div class="graph-zoom-controls">
+            <button class="graph-zoom-btn" onclick="graphZoomOut()" title="Zoom out">−</button>
+            <button class="graph-zoom-btn fit-btn" onclick="graphZoomFit()" title="Fit to screen">Fit</button>
+            <button class="graph-zoom-btn" onclick="graphZoomIn()" title="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="graph-viewport" id="graph-viewport">
+          <div class="graph-canvas" id="graph-canvas" data-w="${svgW}" data-h="${svgH}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}"
+                 style="display:block;font-family:-apple-system,sans-serif;">
+              <defs>
+                <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L8,3 z" fill="#d1d5db"/>
+                </marker>
+                <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L8,3 z" fill="#ef4444"/>
+                </marker>
+              </defs>
+              ${svgEdges}
+              ${svgNodes}
+            </svg>
+          </div>
+        </div>`;
+
+      requestAnimationFrame(() => {
+        if (isFirstRender) {
+          // First time in this view: compute a fit-to-screen transform.
+          graphZoomFit();
+          _graphFitted = true;
+        } else {
+          // Poll re-render: re-apply the preserved transform so the canvas
+          // returns to exactly where the user left it after innerHTML rebuild.
+          setGraphTransform();
+        }
+        initGraphInteraction();
+      });
+    }
+
+    // ── Alerts ──
+    let dismissedAlerts = new Set();
+    let alertsDdOpen = false;
+
+    function toggleAlertsDd() {
+      alertsDdOpen = !alertsDdOpen;
+      document.getElementById('alerts-dd-menu').classList.toggle('open', alertsDdOpen);
+    }
+
+    function computeAlerts() {
+      const alerts = [];
+      backlog.items.forEach((item, idx) => {
+        const pos = idx + 1;
+        const titleEsc = esc(item.title);
+
+        // Thread tagged waiting on user
+        (item.threads || []).forEach((t, ti) => {
+          if (!t.resolved && t.waiting_on === 'user') {
+            const id = `${item.id}:thread:${ti}:${(t.thread || []).length}`;
+            alerts.push({
+              id, type: 'tagged', itemId: item.id,
+              icon: '💬',
+              message: `<a onclick="openEditModal('${escJs(item.id)}')">#${pos} ${titleEsc}</a> — agent tagged you on thread: <em>${esc(t.topic)}</em>`,
+            });
+          }
+        });
+
+        // Item moved back to backlog (has lane history = wasn't just created there)
+        if (item.status === 'backlog' && (item.lane_history || []).length > 0) {
+          const id = `${item.id}:backlog:${item.lane_history.length}`;
+          alerts.push({
+            id, type: 'moved-back', itemId: item.id,
+            icon: '↩',
+            message: `<a onclick="openEditModal('${escJs(item.id)}')">#${pos} ${titleEsc}</a> was moved back to backlog`,
+          });
+        }
+      });
+      return alerts.filter(a => !dismissedAlerts.has(a.id));
+    }
+
+    function renderAlerts() {
+      const alerts = computeAlerts();
+      const badge = document.getElementById('bell-badge');
+      const list = document.getElementById('alerts-list');
+      const title = document.getElementById('alerts-title');
+
+      // Badge
+      if (alerts.length === 0) {
+        badge.style.display = 'none';
+      } else {
+        badge.style.display = 'flex';
+        badge.textContent = alerts.length > 9 ? '9+' : alerts.length;
+      }
+
+      // Dropdown title + list
+      title.textContent = `${alerts.length} Alert${alerts.length !== 1 ? 's' : ''}`;
+      list.innerHTML = alerts.length === 0
+        ? `<div class="alerts-dd-empty">&#x2713; All caught up</div>`
+        : alerts.map(a => `
+          <div class="alert-item type-${a.type}">
+            <span class="alert-icon">${a.icon}</span>
+            <span class="alert-msg">${a.message}</span>
+            <button class="alert-dismiss" onclick="dismissAlert('${escJs(a.id)}')" title="Dismiss">&times;</button>
+          </div>
+        `).join('');
+    }
+
+    function dismissAlert(id) {
+      dismissedAlerts.add(id);
+      renderAlerts();
+    }
+
+    function dismissAllAlerts() {
+      computeAlerts().forEach(a => dismissedAlerts.add(a.id));
+      renderAlerts();
+    }
+
+    // ── Keyboard shortcuts ──
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (document.getElementById('teams-overlay').classList.contains('active')) closeTeams();
+        else if (document.getElementById('settings-overlay').classList.contains('active')) closeSettings();
+        else { document.getElementById('modal-overlay').classList.remove('active'); editingItemId = null; }
+      }
+      const active = document.activeElement;
+      const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
+      const anyModalOpen = document.querySelector('.modal-overlay.active');
+      if (e.key === 'n' && !isTyping && !anyModalOpen) { e.preventDefault(); openAddModal(); }
+      if (e.key === '/' && !isTyping && !anyModalOpen) { e.preventDefault(); document.getElementById('search-input').focus(); }
+      if (e.key === 'Escape' && document.activeElement === document.getElementById('search-input')) {
+        const input = document.getElementById('search-input');
+        input.value = ''; onSearch(''); input.blur();
+      }
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', e => {
+      if (openRequiresDropdown !== null && !e.target.closest('.requires-dropdown')) {
+        openRequiresDropdown = null;
+        renderSettingsLanes();
+      }
+      if (assigneeDdOpen && !e.target.closest('.assignee-dd')) {
+        assigneeDdOpen = false;
+        document.getElementById('assignee-dd-menu').classList.remove('open');
+      }
+      if (alertsDdOpen && !e.target.closest('.bell-wrap')) {
+        alertsDdOpen = false;
+        document.getElementById('alerts-dd-menu').classList.remove('open');
+      }
+    });
+
+    // ── Auto-refresh ──
+    setInterval(() => { if (!document.querySelector('.modal-overlay.active') && !isSaving) loadBacklog(); }, 5000);
+
+    // ── Init ──
+    loadUser();
+    loadBacklog();
+    updateTeamCount();
+  </script>
+</body>
+</html>

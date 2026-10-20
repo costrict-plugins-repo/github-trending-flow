@@ -1,0 +1,52 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Eval workspace (dev artifacts)
+backlog-manager-workspace/
+
+# Recovery journal sidecar (#95) — live-state backups, never committed
+.backlog/
+
+# code-review-graph (local graph DB)
+.code-review-graph/
+
+# MCP / Claude local config
+.mcp.json
+.claude/settings.json
+.claude/skills/
+
+# Build artifacts
+*.egg-info/
+.venv-cli/
+
+# Runtime state
+policies.json
+policy_log.json
+handoff_results/
+
+# Eval results
+skills/backlog-manager/evals/results/
+
+# Eval / benchmark artifacts
+flow_env/
+.deepeval/
+*.csv
+benchmarks/
+run_benchmark.py
+simple_benchmark.py
+test.py
+test_flow.py
+test_flow_suite.py
+proof.csv
+pro_benchmark.csv
+benchmark_results.csv
+

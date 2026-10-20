@@ -1,0 +1,260 @@
+{
+  "skill_name": "backlog-manager",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Hey, I just thought of something — we need to add OAuth2 support for the API. Park that in the backlog for now, I'll flesh it out later.",
+      "expected_output": "Creates backlog.json with one new item titled something like 'Add OAuth2 support for the API' with status 'backlog', appended at the bottom",
+      "files": [],
+      "expectations": [
+        "A backlog.json file is created or updated",
+        "The new item has status 'backlog'",
+        "The item title references OAuth2 and API",
+        "The item is appended at the end of the items array",
+        "The item has an id, created_at, and updated_at field",
+        "Claude confirms what was added"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Show me the backlog. Then move the OAuth item to the top — it's more urgent than I thought.",
+      "expected_output": "Displays the backlog in a readable format grouped by status, then moves the OAuth2 item (currently at index 3) to position 0 in the array",
+      "files": ["evals/files/backlog_with_items.json"],
+      "expectations": [
+        "The backlog is displayed in a readable, grouped format",
+        "All items from the fixture are shown",
+        "The OAuth2 item is moved to the first position in the items array",
+        "The updated backlog.json has OAuth2 item at index 0",
+        "Other items maintain their relative order",
+        "Claude confirms the reorder"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm free now, what's next on the backlog?",
+      "expected_output": "Identifies the highest-priority ready item and offers to pick it up",
+      "files": ["evals/files/backlog_with_ready.json"],
+      "expectations": [
+        "Claude reads the backlog and identifies ready items",
+        "The highest-priority ready item is surfaced (Add rate limiting to API)",
+        "Claude offers to pick it up or start working on it",
+        "Claude does not just start working without confirming with the user"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "What is the next on the backlog?",
+      "expected_output": "Shows the next item to work on from the backlog, identifying the highest-priority ready item",
+      "files": ["evals/files/backlog_with_ready.json"],
+      "expectations": [
+        "Claude reads the backlog",
+        "The highest-priority ready item is identified (Add rate limiting to API)",
+        "Claude presents the item details to the user",
+        "Claude suggests or offers to pick it up"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I'm free now, what should I work on?",
+      "expected_output": "Recognizes the backlog is empty and suggests the user add items rather than offering to pick something up",
+      "files": [],
+      "expectations": [
+        "Claude reads the backlog or recognizes it doesn't exist / is empty",
+        "Claude does NOT offer to pick up a task",
+        "Claude suggests adding items to the backlog",
+        "The response is helpful and conversational, not a dead end"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "What should I work on next?",
+      "expected_output": "Generates a work brief using the scoring engine — recommends #1 (Fix auth token expiry crash) as the top item because it blocks 2 other items and is a critical bug",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude generates a structured work brief, not just a list",
+        "The auth token crash (#1) is recommended as the NEXT item due to high score (blocks 2 items + critical bug boost)",
+        "The work brief includes score values and reasoning (Why line)",
+        "Quick win items like #2 (retry logic, low complexity) are mentioned as a secondary recommendation",
+        "The WATCH section flags #3 (skip count 6, past escalation threshold) and #3's staleness in refined",
+        "Agent assignment recommendations are included (worker-auth for auth items)",
+        "Model routing is mentioned (e.g., sonnet for medium complexity)"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "There's a critical production bug — the payment API is returning 500 errors for all transactions. Add this as a critical bug.",
+      "expected_output": "Creates a new item with category=bug, priority_weight=10, and announces reprioritization since it's a critical bug",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "A new item is created with category 'bug'",
+        "The item has priority_weight of 9 or 10",
+        "The item has complexity set (likely medium or high)",
+        "Tags are set (e.g., payment, backend, api)",
+        "Claude announces this as a reprioritization event",
+        "Claude suggests this new bug should be worked on immediately based on its score"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "The login redirect loop bug (#6) is back again after we thought we fixed it. Move it back to ready.",
+      "expected_output": "Moves item #6 back from its current state, increments reopen_count, and flags the complexity mis-estimate and potential need for redesign",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Item #6 is moved back to ready (or appropriate lane)",
+        "Claude notes this is a reopen (the item's reopen_count should be referenced)",
+        "Claude flags that the complexity estimate may be wrong since it keeps getting reopened",
+        "With reopen_count reaching 3+, Claude suggests considering a redesign rather than another fix",
+        "Claude mentions the pattern of auth-related reopens (opportunistic redesign detection)"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "I just completed the auth token expiry fix (#1). Mark it as done.",
+      "expected_output": "Marks #1 as done and announces that items previously blocked by #1 are now unblocked, with updated scoring recommendations",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Item #1 status is moved toward done (respecting gate rules — needs in-progress and code-review first, or Claude explains the gate requirement)",
+        "Claude mentions the blocker_resolved event — #4 (session management) and #5 (SSO) are now unblocked",
+        "Claude provides a quick work brief for what's next now that blockers are cleared",
+        "The unblocked items' improved scores are noted"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Show me the backlog. Which items are stale and need attention?",
+      "expected_output": "Displays the backlog and identifies stale items — #3 has been in refined since March 8 (15+ days past threshold) and has skip_count of 6",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "The backlog is displayed grouped by status",
+        "Claude identifies #3 as stale (in refined for 15+ days, threshold is 7)",
+        "Claude notes #3's skip count of 6 (past escalation threshold of 5)",
+        "Claude recommends a decision: kill it, bump it, or reprioritize",
+        "Intelligence scoring context is provided for the recommendations"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "What should I work on next? I want to understand WHY you're recommending it over the other options.",
+      "expected_output": "Uses the tribunal (/api/recommend) to generate a justified recommendation — picks #1 (auth token crash) and explains through lens arguments: urgency (critical bug), leverage (unblocks 2 items), and risk (blocking). Explains why #2 (retry logic) and #4 (session refactor) were not picked with counterfactual reasoning.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude uses /api/recommend (not just /api/scores) to get tribunal justification",
+        "The auth token crash (#1) is recommended as the top pick",
+        "Claude cites specific tribunal lenses — urgency (critical bug), leverage (unblocks items), or risk",
+        "Claude provides counterfactuals — why #2 or #4 were NOT picked (e.g., no leverage, blocked)",
+        "Confidence level is mentioned (high, medium, or low)",
+        "The response reads as a justified recommendation, not just a sorted list"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "Why not the retry logic webhook task instead? It seems like a quick win.",
+      "expected_output": "Explains via counterfactual reasoning from the tribunal shadow ranking — the retry logic (#2) has a decent score and is a quick win, but it lost to #1 on urgency (not a critical bug) and leverage (doesn't unblock anything). The tribunal considered it but the auth crash's urgency and unblocking power outweigh the quick-win bonus.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude explains why the retry logic item was not the top pick",
+        "The explanation references specific lens comparisons (urgency, leverage)",
+        "Claude acknowledges it IS a quick win but explains what outweighed that",
+        "The response uses counterfactual reasoning, not just 'it has a lower score'",
+        "Claude references the tribunal shadow ranking or lost_reason if available"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "I want worker-auth to pick up the next task. What does the tribunal recommend for that agent specifically?",
+      "expected_output": "Uses /api/recommend?agent=worker-auth to get an agent-specific recommendation. The auth token crash (#1) should still be top pick with enhanced agent_fit lens arguments — worker-auth has skills matching auth, backend, security tags. The recommendation includes the specific agent fit reasoning.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude calls /api/recommend with agent=worker-auth parameter",
+        "The recommendation accounts for worker-auth's skill profile",
+        "Agent fit lens arguments are cited (skill match: auth, backend, security)",
+        "The work brief format includes agent assignment reasoning",
+        "If the agent is at capacity, Claude mentions the load constraint"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "The session management refactor (#4) is blocked by the auth token crash fix (#1). I just merged the PR for #1 — can we start on #4 now even though it's not fully done?",
+      "expected_output": "Records a pr_merged signal on item #1 via POST /api/items/<id>/signal, then re-evaluates readiness. #1 is now at ~75% readiness (in-progress or ready status + pr_merged signal), which exceeds the 70% startable threshold. Announces #4 as startable with known risk.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude records a pr_merged readiness signal on the auth token crash item (#1)",
+        "Claude re-evaluates or explains that #1's readiness has increased (in-progress/ready + pr_merged ≈ 75%)",
+        "Claude notes the 70% startable threshold and that #4 is now above it",
+        "The work brief or response describes #4 as 'startable with risk' or equivalent phrasing",
+        "Claude does NOT say #4 is fully unblocked — it acknowledges the remaining risk",
+        "Claude explains what the remaining risk is (tests not yet confirmed, review pending, etc.)"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Add a rule: if a bug is blocking more than 2 active items and has been in the backlog for more than 4 hours without being assigned, escalate it to the top.",
+      "expected_output": "Creates a new policy via POST /api/policies with a clear name and the natural language description. Confirms the policy was added and explains when it will fire.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude calls POST /api/policies with name and description fields",
+        "The description faithfully captures the user's intent in natural language",
+        "Claude confirms the policy was added with its name",
+        "Claude explains that the policy will be evaluated after every state change",
+        "Claude mentions that ANTHROPIC_API_KEY is required for evaluation",
+        "Claude does NOT try to hard-code the logic — it stores the rule as a natural language description"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Show me all my rules and let me know if any are stale or firing constantly.",
+      "expected_output": "Fetches GET /api/policies and presents each policy with name, active status, fire count, last fired date, and any staleness warnings. Flags policies that have staleness_warnings populated.",
+      "files": [],
+      "expectations": [
+        "Claude calls GET /api/policies",
+        "Each policy is listed with name, active status, fire count, and last_fired date",
+        "Policies with staleness_warnings are clearly flagged",
+        "Claude explains what the staleness warning means (e.g. never fired in 18 days)",
+        "Claude offers to disable or delete stale policies",
+        "If no policies exist, Claude offers to add some or suggest rules"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "Can you suggest some rules based on what you see in the backlog?",
+      "expected_output": "Calls GET /api/policies/suggestions which analyses backlog patterns (high skip counts, unassigned critical bugs, overloaded agents) and returns 2-4 LLM-generated policy suggestions. Claude presents each suggestion and offers to add them.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude calls GET /api/policies/suggestions",
+        "Claude presents 2-4 suggested policies with name and description",
+        "Each suggestion is grounded in observable patterns from the backlog (e.g. skip counts, unassigned bugs)",
+        "Claude offers to add one or more suggestions as active policies",
+        "Claude does NOT invent policies with no grounding in the actual backlog state",
+        "If the API key is missing, Claude explains the requirement gracefully"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Run the rules now and tell me what happened.",
+      "expected_output": "Calls GET /api/policies/evaluate which triggers immediate policy evaluation. Returns how many policies fired, what actions were executed, and any notifications. Claude summarises the results in plain language.",
+      "files": ["evals/files/backlog_with_scores.json"],
+      "expectations": [
+        "Claude calls GET /api/policies/evaluate",
+        "Claude reports how many policies fired (could be 0)",
+        "If actions were executed, Claude describes what changed (e.g. 'auth token bug escalated to priority 9')",
+        "If notifications fired, Claude surfaces the messages",
+        "If 0 policies fired, Claude explains why (e.g. no conditions currently met) rather than saying nothing happened",
+        "Claude does NOT re-run evaluation repeatedly — one call is sufficient"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "Two of my rules are conflicting — one escalates the auth bug and another blocks it. Which one should win?",
+      "expected_output": "Explains the conflict resolution mechanism: when two policies produce contradictory actions (escalate vs block) on the same item, a second LLM call adjudicates. Claude explains the _CONTRADICTORY_PAIRS logic and that the resolution reasoning is logged to policy_log.json. Optionally shows recent policy log via GET /api/policies/log.",
+      "files": [],
+      "expectations": [
+        "Claude explains that Flow auto-detects the escalate/block conflict (contradictory pair)",
+        "Claude explains a second LLM call adjudicates and picks the winning action",
+        "Claude mentions the reasoning is logged with resolution_reasoning in policy_log.json",
+        "Claude offers to show the recent policy log via GET /api/policies/log",
+        "Claude recommends adjusting policy priorities to give one clear precedence over the other",
+        "Claude does NOT say both actions will be applied — only one wins"
+      ]
+    }
+  ]
+}
